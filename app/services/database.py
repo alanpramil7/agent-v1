@@ -25,6 +25,12 @@ class DatabaseService:
                       created_at TIMESTAMP
                     )
                     """)
+            cur.execute("""
+                    CREATE TABLE IF NOT EXISTS document(
+                      file_name TEXT,
+                      created_at TIMESTAMP
+                    )
+                    """)
 
     def add_wiki(self, organization: str, project: str, wiki_identifier: str):
         """"""
@@ -61,6 +67,35 @@ class DatabaseService:
                 LIMIT 1
                 """,
                 (organization, project, wiki_identifier),
+            )
+            result = cur.fetchone()
+            return bool(result)
+
+    def add_document(self, file_name: str):
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                        INSERT INTO document
+                        (file_name, created_at)
+                        VALUES (?, ?)
+                        """,
+                (file_name, datetime.utcnow()),
+            )
+
+    def document_exists(
+        self,
+        file_name: str,
+    ) -> bool:
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT 1 FROM document 
+                WHERE file_name = ? 
+                LIMIT 1
+                """,
+                (file_name,),
             )
             result = cur.fetchone()
             return bool(result)

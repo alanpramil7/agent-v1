@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.endpoints.document import router as document_router
 from app.api.v1.endpoints.wiki import router as wiki_router
 
 router = APIRouter(
@@ -7,3 +8,4 @@ router = APIRouter(
 )
 
 router.include_router(wiki_router)
+router.include_router(document_router)

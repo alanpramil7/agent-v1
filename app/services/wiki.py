@@ -61,12 +61,10 @@ class WikiService:
         """Process wiki tree and extract pages."""
         pages = []
 
-        # Process current page
         page_path = page.get("path", "/")
         content = page.get("content", "")
 
         if not content:
-            # Fetch the content for the current page
             content = await self._fetch_page_content(page_path, session)
 
         wiki_page = WikiPage(
@@ -74,9 +72,9 @@ class WikiService:
             content=content,
             remote_url=page.get("remoteUrl"),
         )
+        logger.debug(f"Fetched page: {wiki_page.page_path}")
         pages.append(wiki_page)
 
-        # Process subpages
         for subpage in page.get("subPages", []):
             subpage_results = await self._process_wiki_tree(subpage, session)
             pages.extend(subpage_results)
@@ -111,6 +109,7 @@ class WikiService:
         """Process wiki pages synchronously and update database."""
         try:
             if self.database.wiki_exists(organization, project, wiki_identifier):
+                logger.debug(f"Wiki is already processed : {wiki_identifier}")
                 return {"status": "Wiki already processed."}
 
             pages = await self._fetch_wiki_pages()

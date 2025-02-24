@@ -1,6 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Dict, Type
 
+from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
+from langchain_community.document_loaders.base import BaseLoader
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +19,11 @@ class Settings(BaseSettings):
 
     root_dir: Path = Path(__file__).parent.parent.parent
     data_dir: Path = root_dir / "data"
+
+    supported_extensions: Dict[str, Type[BaseLoader]] = {
+        "pdf": PyPDFLoader,
+        "docx": Docx2txtLoader,
+    }
 
     embedding_model: str = "text-embedding-3-small"
     azure_openai_endpoint: str
