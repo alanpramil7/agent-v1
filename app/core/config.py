@@ -4,6 +4,7 @@ from typing import Dict, Type
 
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
 from langchain_community.document_loaders.base import BaseLoader
+from langchain_openai import AzureChatOpenAI
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +34,17 @@ class Settings(BaseSettings):
     wiki_access_token: str
     azure_embedding_endpoint: str
     embedding_api_version: str
+
+    database: str
+
+    @property
+    def llm(self) -> AzureChatOpenAI:
+        return AzureChatOpenAI(
+            azure_endpoint=self.azure_openai_endpoint,
+            deployment_name=self.azure_openai_deployment_name,
+            openai_api_version=self.openai_api_version,
+            api_key=self.azure_openai_api_key,
+        )
 
     model_config = SettingsConfigDict(env_file=".env")
 
