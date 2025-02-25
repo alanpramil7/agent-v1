@@ -27,8 +27,8 @@ class IndexerService:
         self.embedding_model = AzureOpenAIEmbeddings(
             model=embedding_model,
             api_key=settings.azure_openai_api_key,
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_version=settings.openai_api_version,
+            azure_endpoint=settings.azure_embedding_endpoint,
+            api_version=settings.embedding_api_version,
         )
         logger.debug("Embedding model initialized.")
 

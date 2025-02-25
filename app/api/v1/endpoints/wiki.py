@@ -1,5 +1,3 @@
-import os
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependency import get_database, get_indexer

@@ -49,9 +49,9 @@ class DocumentService:
         chunks = self.indexer.text_splitter.split_documents(docs)
         logger.debug(f"Split documents into {len(chunks)} chunks.")
 
-        # logger.debug("Adding chunks into vectorstore.")
-        # self.indexer.vector_store.add_documents(chunks)
-        # logger.debug("Added chunks into vectorstore.")
+        logger.debug("Adding chunks into vectorstore.")
+        self.indexer.vector_store.add_documents(chunks)
+        logger.debug("Added chunks into vectorstore.")
 
         self.database.add_document(Path(file_path).name)
 

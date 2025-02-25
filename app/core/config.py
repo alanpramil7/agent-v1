@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     openai_api_version: str
     azure_openai_api_key: str
     wiki_access_token: str
+    azure_embedding_endpoint: str
+    embedding_api_version: str
 
     model_config = SettingsConfigDict(env_file=".env")
 

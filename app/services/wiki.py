@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 import aiohttp
+from langchain_core.documents import Document
 
 from app.models.wiki import WikiPage
 from app.services.database import DatabaseService
@@ -110,7 +111,9 @@ class WikiService:
         try:
             if self.database.wiki_exists(organization, project, wiki_identifier):
                 logger.debug(f"Wiki is already processed : {wiki_identifier}")
-                return {"status": "Wiki already processed."}
+                return {
+                    "status": "Wiki already processed.",
+                }
 
             pages = await self._fetch_wiki_pages()
             if not pages:
@@ -138,22 +141,27 @@ class WikiService:
                         f"Page {page.page_path} content length: {content_length} characters"
                     )
 
-                    doc = {
-                        "page_content": f"{page.page_path}\n{page.content}",
-                        "metadata": {
+                    doc = Document(
+                        page_content=f"{page.page_path}\n{page.content}",
+                        metadata={
                             "source": f"wiki_{page.page_path}",
                             "organization": organization,
                             "project": project,
                         },
-                    }
-                    # if self.indexer.vector_store:
-                    #     await self.indexer.vector_store.aadd_documents([doc])
-                    #     processed_pages.append(page.page_path)
-                    #     logger.debug(f"Successfully processed and indexed page: {page.page_path}")
-                    # else:
-                    #     logger.error("Vector store not initialized")
-                    #     failed_pages.append(page.page_path)
-                    #     logger.error(f"Failed to process page {page.page_path} due to uninitialized vector store")
+                    )
+
+                    if self.indexer.vector_store:
+                        await self.indexer.vector_store.aadd_documents([doc])
+                        processed_pages.append(page.page_path)
+                        logger.debug(
+                            f"Successfully processed and indexed page: {page.page_path}"
+                        )
+                    else:
+                        logger.error("Vector store not initialized")
+                        failed_pages.append(page.page_path)
+                        logger.error(
+                            f"Failed to process page {page.page_path} due to uninitialized vector store"
+                        )
 
                 except Exception as e:
                     logger.error(
@@ -168,8 +176,6 @@ class WikiService:
             if failed_pages:
                 logger.warning(f"Failed pages: {', '.join(failed_pages)}")
 
-            self.database.add_wiki(organization, project, wiki_identifier)
-
             if failed_pages:
                 return {
                     "status": "Completed with errors",
@@ -177,6 +183,7 @@ class WikiService:
                     "failed_pages": len(failed_pages),
                 }
             else:
+                self.database.add_wiki(organization, project, wiki_identifier)
                 return {
                     "status": "Successfully processed",
                     "processed_pages": len(processed_pages),
