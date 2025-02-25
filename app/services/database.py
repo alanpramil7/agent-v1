@@ -31,6 +31,12 @@ class DatabaseService:
                       created_at TIMESTAMP
                     )
                     """)
+            cur.execute("""
+                        CREATE TABLE IF NOT EXISTS website(
+                        url TEXT,
+                        created_at TIMESTAMP
+                        )
+                        """)
 
     def add_wiki(self, organization: str, project: str, wiki_identifier: str):
         """"""
@@ -96,6 +102,38 @@ class DatabaseService:
                 LIMIT 1
                 """,
                 (file_name,),
+            )
+            result = cur.fetchone()
+            return bool(result)
+
+    def add_website(self, url: str):
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                        INSERT INTO website
+                        (url, created_at)
+                        VALUES(?, ?)
+                        """,
+                (
+                    url,
+                    datetime.utcnow(),
+                ),
+            )
+
+    def website_exists(
+        self,
+        url: str,
+    ) -> bool:
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                    SELECT 1 FROM website 
+                    WHERE url = ? 
+                    LIMIT 1
+                    """,
+                (url,),
             )
             result = cur.fetchone()
             return bool(result)

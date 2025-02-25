@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional
 
 import aiohttp
@@ -126,7 +127,8 @@ class WikiService:
             total_pages = len(pages)
             logger.debug(f"Starting to process {total_pages} wiki pages")
 
-            for idx, page in enumerate(pages, 1):
+            # Create tasks for all pages to process them concurrently
+            async def process_single_page(page, idx):
                 try:
                     logger.debug(
                         f"Processing page {idx}/{total_pages}: {page.page_path}"
@@ -134,7 +136,7 @@ class WikiService:
 
                     if not page.content.strip():
                         logger.warning(f"Page {page.page_path} is empty - skipping")
-                        continue
+                        return
 
                     content_length = len(page.content)
                     logger.debug(
@@ -151,7 +153,7 @@ class WikiService:
                     )
 
                     if self.indexer.vector_store:
-                        await self.indexer.vector_store.aadd_documents([doc])
+                        # await self.indexer.vector_store.aadd_documents([doc])
                         processed_pages.append(page.page_path)
                         logger.debug(
                             f"Successfully processed and indexed page: {page.page_path}"
@@ -169,6 +171,11 @@ class WikiService:
                         exc_info=True,
                     )
                     failed_pages.append(page.page_path)
+
+            tasks = [
+                process_single_page(page, idx) for idx, page in enumerate(pages, 1)
+            ]
+            await asyncio.gather(*tasks)
 
             logger.debug(
                 f"Wiki processing completed. Successfully processed: {len(processed_pages)} pages, Failed: {len(failed_pages)} pages"

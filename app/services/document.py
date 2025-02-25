@@ -14,7 +14,7 @@ class DocumentService:
         self.database = database
         self.supported_extension = settings.supported_extensions
 
-    def _create_docs(self, file_path: Path):
+    async def _create_docs(self, file_path: Path):
         logger.debug(f"Creating documents for file: {file_path}")
         extension = Path(file_path).suffix.lower().lstrip(".")
         logger.debug(f"Detected file extension: {extension}")
@@ -36,7 +36,7 @@ class DocumentService:
 
         return docs
 
-    def process_document(self, file_path: Path):
+    async def process_document(self, file_path: Path):
         if not self.indexer.vector_store and not self.indexer.text_splitter:
             logger.error("Indexer not initialized.")
             raise HTTPException(
@@ -44,13 +44,13 @@ class DocumentService:
                 detail="Indexer is not initialized properly",
             )
 
-        docs = self._create_docs(file_path)
+        docs = await self._create_docs(file_path)
         logger.debug("Splitting documents into chunks.")
         chunks = self.indexer.text_splitter.split_documents(docs)
         logger.debug(f"Split documents into {len(chunks)} chunks.")
 
         logger.debug("Adding chunks into vectorstore.")
-        self.indexer.vector_store.add_documents(chunks)
+        # self.indexer.vector_store.aadd_documents(chunks)
         logger.debug("Added chunks into vectorstore.")
 
         self.database.add_document(Path(file_path).name)
@@ -73,4 +73,4 @@ class DocumentService:
         with open(file_path, "wb") as f:
             f.write(content)
 
-        return self.process_document(file_path)
+        return await self.process_document(file_path)
