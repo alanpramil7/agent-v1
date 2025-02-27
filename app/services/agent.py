@@ -11,6 +11,7 @@ from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_community.utilities.sql_database import SQLDatabase
 from langchain_core.tools import tool
 from langchain_core.tools.base import BaseTool
+from langgraph.checkpoint.memory import MemorySaver
 from rich import print
 
 from app.core.config import settings
@@ -51,7 +52,7 @@ class AgentService:
         self.tools = self.sql_tools + [self.retriver_tool]
 
         # Create the agent executor
-        # self.memory = MemorySaver()
+        self.memory = MemorySaver()
         self.agent_executor = self._create_agent()
 
     def _create_retriver_tool(self) -> BaseTool:
@@ -153,7 +154,7 @@ class AgentService:
             model=self.llm,
             tools=self.tools,
             prompt=system_message,
-            # checkpointer=self.memory,
+            checkpointer=self.memory,
         )
 
         return agent
@@ -178,7 +179,7 @@ class AgentService:
             thread_id = "default"
 
         # Configure the thread ID for the agent
-        config = {"configurable": {"thread_id": thread_id}}
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 10}
 
         try:
             # Format the question as a message for the agent
@@ -223,14 +224,16 @@ class AgentService:
         if not thread_id:
             thread_id = "default"
 
-        # config = {"configurable": {"thread_id": thread_id}}
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 10}
 
         try:
             # Format the question as a message for the agent
             messages = [("human", question)]
 
             # Stream the agent's response
-            async for event in self.agent_executor.astream({"messages": messages}):
+            async for event in self.agent_executor.astream(
+                {"messages": messages}, config
+            ):
                 # Debug: print(event)
                 if "agent" in event:
                     for message in event["agent"]["messages"]:
