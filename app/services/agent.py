@@ -124,6 +124,7 @@ class AgentService:
 **When using SQL tools:**
 - Always start by exploring the available tables using the `sql_db_list_tables` tool. Select one or more tables that might have any relation to user question.
 - Then examine the schema of relevant tables using the `sql_db_schema` tool.
+- **IMORTANT** When generating sql queries always enclose the colum name in double quotes
 - Finally, use `sql_db_query` to run a query and get the answer.
 - **DO NOT** make any DML statements (INSERT, UPDATE, DELETE, DROP, etc.) to the database.
 - Craft queries to select only the necessary columns and rows; avoid fetching all content unless explicitly required by the question.
@@ -234,9 +235,17 @@ class AgentService:
             async for event in self.agent_executor.astream(
                 {"messages": messages}, config
             ):
-                # Debug: print(event)
+                # print(event)
+                if "tools" in event:
+                    for message in event["tools"]["messages"]:
+                        print("\nTool Message")
+                        print(message.content)
                 if "agent" in event:
                     for message in event["agent"]["messages"]:
+                        if message.tool_calls:
+                            print("\nTool Calls")
+                            print(message.tool_calls)
+                        print("\nAgent Response")
                         print(message.content)
                         yield message.content + "\n"
 
