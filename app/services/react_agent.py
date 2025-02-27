@@ -1,4 +1,19 @@
-from rich import print
+"""
+ReAct Agent Implementation Module
+
+This module provides functionality to create and manage LangGraph ReAct agents.
+It implements the ReAct (Reasoning and Acting) pattern for AI agents, allowing
+them to reason about problems and take actions using tools.
+
+The module integrates with LangChain and LangGraph to create a stateful agent that can:
+- Process user messages
+- Reason about what tools to use
+- Execute tools
+- Generate responses
+
+This is an adaptation of the LangGraph ReAct agent for use within our application.
+"""
+
 import functools
 import inspect
 from typing import (
@@ -25,9 +40,6 @@ from langchain_core.runnables import (
     RunnableConfig,
 )
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel
-from typing_extensions import Annotated, TypedDict
-
 from langgraph.errors import ErrorCode, create_error_message
 from langgraph.graph import END, StateGraph
 from langgraph.graph.graph import CompiledGraph
@@ -38,7 +50,11 @@ from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.store.base import BaseStore
 from langgraph.types import Checkpointer, Send
 from langgraph.utils.runnable import RunnableCallable
+from pydantic import BaseModel
+from rich import print
+from typing_extensions import Annotated, TypedDict
 
+# Type definitions for response handling
 StructuredResponse = Union[dict, BaseModel]
 StructuredResponseSchema = Union[dict, type[BaseModel]]
 F = TypeVar("F", bound=Callable[..., Any])
@@ -49,7 +65,15 @@ F = TypeVar("F", bound=Callable[..., Any])
 # We want steps to return messages to append to the list
 # So we annotate the messages attribute with `add_messages` reducer
 class AgentState(TypedDict):
-    """The state of the agent."""
+    """
+    The state of the ReAct agent.
+
+    This state is passed between nodes in the agent's graph and contains:
+    - messages: The conversation history
+    - is_last_step: Flag indicating if the current step is the last step
+    - remaining_steps: The number of remaining steps before the agent stops
+    - structured_response: Optional structured response for the final output
+    """
 
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
@@ -65,6 +89,7 @@ StateSchemaType = Type[StateSchema]
 
 PROMPT_RUNNABLE_NAME = "Prompt"
 
+# Type definitions for different prompt formats
 MessagesModifier = Union[
     SystemMessage,
     str,
@@ -81,6 +106,19 @@ Prompt = Union[
 
 
 def _get_prompt_runnable(prompt: Optional[Prompt]) -> Runnable:
+    """
+    Convert a prompt into a runnable object for the agent.
+
+    Args:
+        prompt: The prompt specification, which can be a string, SystemMessage,
+               callable, or Runnable
+
+    Returns:
+        Runnable: A runnable object that processes the agent state into messages
+
+    Raises:
+        ValueError: If the prompt is of an unexpected type
+    """
     prompt_runnable: Runnable
     if prompt is None:
         prompt_runnable = RunnableCallable(
@@ -119,6 +157,18 @@ def _get_prompt_runnable(prompt: Optional[Prompt]) -> Runnable:
 def _convert_messages_modifier_to_prompt(
     messages_modifier: MessagesModifier,
 ) -> Prompt:
+    """
+    Convert a messages modifier to a prompt.
+
+    Args:
+        messages_modifier: Function or object that modifies messages
+
+    Returns:
+        Prompt: A prompt object that can be used with the agent
+
+    Raises:
+        ValueError: If the messages_modifier is of an unexpected type
+    """
     prompt: Prompt
     if isinstance(messages_modifier, (str, SystemMessage)):
         return messages_modifier
@@ -137,7 +187,17 @@ def _convert_messages_modifier_to_prompt(
 
 
 def _convert_modifier_to_prompt(func: F) -> F:
-    """Decorator that converts state_modifier/messages_modifier kwargs to prompt kwarg."""
+    """
+    Decorator that converts state_modifier/messages_modifier kwargs to prompt kwarg.
+
+    This ensures backward compatibility with older API patterns.
+
+    Args:
+        func: Function to wrap
+
+    Returns:
+        F: Wrapped function that handles prompt conversion
+    """
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -161,6 +221,19 @@ def _convert_modifier_to_prompt(func: F) -> F:
 
 
 def _should_bind_tools(model: LanguageModelLike, tools: Sequence[BaseTool]) -> bool:
+    """
+    Determine if tools should be bound to the model.
+
+    Args:
+        model: The language model
+        tools: The tools to potentially bind
+
+    Returns:
+        bool: True if tools should be bound to the model, False otherwise
+
+    Raises:
+        ValueError: If tools are inconsistent between model and tools parameter
+    """
     if not isinstance(model, RunnableBinding):
         return True
 
@@ -195,7 +268,18 @@ def _should_bind_tools(model: LanguageModelLike, tools: Sequence[BaseTool]) -> b
 
 
 def _get_model(model: LanguageModelLike) -> BaseChatModel:
-    """Get the underlying model from a RunnableBinding or return the model itself."""
+    """
+    Get the underlying model from a RunnableBinding or return the model itself.
+
+    Args:
+        model: The language model or binding
+
+    Returns:
+        BaseChatModel: The underlying chat model
+
+    Raises:
+        TypeError: If the model is not a BaseChatModel
+    """
     if isinstance(model, RunnableBinding):
         model = model.bound
 
@@ -210,7 +294,15 @@ def _get_model(model: LanguageModelLike) -> BaseChatModel:
 def _validate_chat_history(
     messages: Sequence[BaseMessage],
 ) -> None:
-    """Validate that all tool calls in AIMessages have a corresponding ToolMessage."""
+    """
+    Validate that all tool calls in AIMessages have a corresponding ToolMessage.
+
+    Args:
+        messages: The sequence of messages to validate
+
+    Raises:
+        ValueError: If any tool call lacks a corresponding ToolMessage
+    """
     all_tool_calls = [
         tool_call
         for message in messages
@@ -305,19 +397,19 @@ def create_react_agent(
 
     # Define the function that calls the model
     def call_model(state: AgentState, config: RunnableConfig) -> AgentState:
-        print(
-            "\n\n============================= Calling model with state=========================\n\n"
-        )
-        print(state)
+        # print(
+        #     "\n\n============================= Calling model with state=========================\n\n"
+        # )
+        # print(state)
         _validate_chat_history(state["messages"])
         response = cast(AIMessage, model_runnable.invoke(state, config))
         # add agent name to the AIMessage
         response.name = name
         has_tool_calls = isinstance(response, AIMessage) and response.tool_calls
-        print(
-            "\n\n============================= Tool Call =========================\n\n"
-        )
-        print(has_tool_calls)
+        # print(
+        #     "\n\n============================= Tool Call =========================\n\n"
+        # )
+        # print(has_tool_calls)
         all_tools_return_direct = (
             all(call["name"] in should_return_direct for call in response.tool_calls)
             if isinstance(response, AIMessage)
@@ -348,10 +440,10 @@ def create_react_agent(
                     )
                 ]
             }
-        print(
-            "\n\n============================= Response =========================\n\n"
-        )
-        print(response)
+        # print(
+        #     "\n\n============================= Response =========================\n\n"
+        # )
+        # print(response)
         # We return a list, because this will get added to the existing list
         return {"messages": [response]}
 
@@ -400,10 +492,10 @@ def create_react_agent(
                 ]
             }
         # We return a list, because this will get added to the existing list
-        print(
-            "\n\n============================= Response =========================\n\n"
-        )
-        print(response)
+        # print(
+        #     "\n\n============================= Response =========================\n\n"
+        # )
+        # print(response)
         return {"messages": [response]}
 
     def generate_structured_response(

@@ -1,32 +1,70 @@
-from app.core.config import settings
-from langchain_community.utilities.sql_database import SQLDatabase
-from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
-from langchain_core.tools.base import BaseTool
-from langchain_core.tools import tool
-from app.services.react_agent import create_react_agent
-from langgraph.checkpoint.memory import MemorySaver
-from typing import Dict, Any
+"""
+Agent Service Module
 
-from app.utils.logger import logger
+This module provides an agent service that processes user questions using LangChain components,
+SQL database tools, and document retrieval capabilities.
+"""
+
+from typing import Any, AsyncGenerator, Optional
+
+from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+from langchain_community.utilities.sql_database import SQLDatabase
+from langchain_core.tools import tool
+from langchain_core.tools.base import BaseTool
+from rich import print
+
+from app.core.config import settings
 from app.services.indexer import IndexerService
+from app.services.react_agent import create_react_agent
+from app.utils.logger import logger
 
 
 class AgentService:
-    def __init__(self, indexer: IndexerService):
+    """
+    Agent service for processing user questions using a combination of LLM,
+    SQL tools, and document retrieval capabilities.
+
+    This class orchestrates the interaction between different components to provide
+    accurate and helpful responses to user questions.
+    """
+
+    def __init__(self, indexer: IndexerService) -> None:
+        """
+        Initialize the Agent Service with necessary components.
+
+        Args:
+            indexer (IndexerService): Service for document indexing and retrieval
+        """
+        # Initialize the language model from settings
         self.llm = settings.llm
         self.indexer = indexer
+
+        # Set up SQL database connection and tools
         self.db = SQLDatabase.from_uri(settings.database)
         self.sql_toolkit = SQLDatabaseToolkit(db=self.db, llm=self.llm)
         self.sql_tools = self.sql_toolkit.get_tools()
+
+        # Create document retriever tool
         self.retriver_tool = self._create_retriver_tool()
+
+        # Combine all tools
         self.tools = self.sql_tools + [self.retriver_tool]
 
-        self.memory = MemorySaver()
+        # Create the agent executor
+        # self.memory = MemorySaver()
         self.agent_executor = self._create_agent()
 
     def _create_retriver_tool(self) -> BaseTool:
+        """
+        Create a document retrieval tool that can fetch relevant documents
+        from the vector store based on a query.
+
+        Returns:
+            BaseTool: The document retrieval tool
+        """
+
         @tool
-        async def retrive_documents(query: str):
+        async def retrive_documents(query: str) -> str:
             """
             Retrieve relevant documents from the vector store based on the query.
             Use this tool when you need to find information from documents rather than from the database.
@@ -39,22 +77,27 @@ class AgentService:
             """
             logger.debug(f"Retriving docs for query: {query}")
 
+            # Validate vector store existence
             if not self.indexer.vector_store:
                 raise ValueError("Vector store is undefined.")
 
+            # Configure retriever with similarity search
             retriver = self.indexer.vector_store.as_retriever(
                 search_type="similarity",
-                search_kwargs={"k": 5},
+                search_kwargs={"k": 5},  # Retrieve top 5 relevant documents
             )
 
+            # Retrieve documents based on the query
             docs = await retriver.ainvoke(query)
 
             if not docs:
                 return "No documents are found."
 
+            # Log retrieved documents for debugging
             for i, doc in enumerate(docs):
                 logger.debug(f"Retrieved document {i}: {doc.page_content[:100]}...")
 
+            # Format documents into a readable context string
             context = "\n\n".join(
                 [f"Document {i + 1}:\n{doc.page_content}" for i, doc in enumerate(docs)]
             )
@@ -64,7 +107,13 @@ class AgentService:
         return retrive_documents
 
     def _create_agent(self):
-        """Create a LangGraph agent with the configured tools."""
+        """
+        Create a LangGraph agent with the configured tools and system prompt.
+
+        Returns:
+            Agent executor that can process user questions
+        """
+        # Comprehensive system message that guides the agent's behavior
         system_message = """You are a helpful and knowledgeable assistant with access to various tools. Your goal is to provide accurate and helpful responses to user questions by using the appropriate tools.
 
 **You have access to the following tools:**
@@ -72,7 +121,7 @@ class AgentService:
 2. **Document Retrieval Tool**
 
 **When using SQL tools:**
-- Always start by exploring the available tables using the `sql_db_list_tables` tool.
+- Always start by exploring the available tables using the `sql_db_list_tables` tool. Select one or more tables that might have any relation to user question.
 - Then examine the schema of relevant tables using the `sql_db_schema` tool.
 - Finally, use `sql_db_query` to run a query and get the answer.
 - **DO NOT** make any DML statements (INSERT, UPDATE, DELETE, DROP, etc.) to the database.
@@ -104,44 +153,91 @@ class AgentService:
             model=self.llm,
             tools=self.tools,
             prompt=system_message,
-            checkpointer=self.memory,
+            # checkpointer=self.memory,
         )
 
         return agent
 
     async def process_question(
-        self, question: str, thread_id: str = None
-    ) -> Dict[str, Any]:
+        self, question: str, thread_id: Optional[str] = None
+    ) -> Any:
         """
         Process a user question using the LangGraph agent.
 
         Args:
-            question: The user's question
-            thread_id: Optional thread ID for maintaining conversation context
+            question (str): The user's question
+            thread_id (Optional[str]): Thread ID for maintaining conversation context
 
         Returns:
-            Dict containing the agent's response and any relevant metadata
+            The agent's response or error information
         """
         logger.debug(f"Processing question: {question}")
 
+        # Use default thread_id if none provided
         if not thread_id:
             thread_id = "default"
 
+        # Configure the thread ID for the agent
         config = {"configurable": {"thread_id": thread_id}}
 
         try:
+            # Format the question as a message for the agent
             messages = [("human", question)]
 
+            # Invoke the agent with the message
             result = await self.agent_executor.ainvoke({"messages": messages}, config)
 
+            # Extract the final answer from the agent's response
             final_answer = result["messages"][-1].content
 
             return final_answer
 
         except Exception as e:
+            # Log and handle any errors that occur during processing
             logger.error(f"Error processing question: {str(e)}")
             return {
                 "answer": "I apologize, but I encountered an error while processing your question.",
                 "status": "error",
                 "error": str(e),
             }
+
+    async def stream_question(
+        self, question: str, thread_id: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream a user question using the LangGraph agent.
+
+        This method allows for returning the agent's response as chunks in real-time,
+        rather than waiting for the entire response to be generated.
+
+        Args:
+            question (str): The user's question
+            thread_id (Optional[str]): Thread ID for maintaining conversation context
+
+        Yields:
+            str: Chunks of the agent's response
+        """
+        logger.debug(f"Streaming response for question: {question}")
+
+        # Use default thread_id if none provided
+        if not thread_id:
+            thread_id = "default"
+
+        # config = {"configurable": {"thread_id": thread_id}}
+
+        try:
+            # Format the question as a message for the agent
+            messages = [("human", question)]
+
+            # Stream the agent's response
+            async for event in self.agent_executor.astream({"messages": messages}):
+                # Debug: print(event)
+                if "agent" in event:
+                    for message in event["agent"]["messages"]:
+                        print(message.content)
+                        yield message.content + "\n"
+
+        except Exception as e:
+            # Log and handle any errors that occur during streaming
+            logger.error(f"Error streaming question: {str(e)}")
+            yield "I encountered an error while processing your question.\n"
