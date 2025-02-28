@@ -5,10 +5,12 @@ This module provides an agent service that processes user questions using LangCh
 SQL database tools, and document retrieval capabilities.
 """
 
+import json
 from typing import Any, AsyncGenerator, Optional
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_community.utilities.sql_database import SQLDatabase
+from langchain_core.messages import ToolMessage, AIMessage
 from langchain_core.tools import tool
 from langchain_core.tools.base import BaseTool
 from langgraph.checkpoint.memory import MemorySaver
@@ -96,7 +98,7 @@ class AgentService:
 
             # Log retrieved documents for debugging
             for i, doc in enumerate(docs):
-                logger.debug(f"Retrieved document {i}: {doc.page_content[:100]}...")
+                logger.debug(f"Retrieved document {i}: {doc}")
 
             # Format documents into a readable context string
             context = "\n\n".join(
@@ -115,41 +117,50 @@ class AgentService:
             Agent executor that can process user questions
         """
         # Comprehensive system message that guides the agent's behavior
-        system_message = """You are a helpful and knowledgeable assistant with access to various tools. Your goal is to provide accurate and helpful responses to user questions by using the appropriate tools.
+        system_message = """You are a helpful and knowledgeable assistant with access to tools to provide accurate and concise answers to user questions.
 
-**You have access to the following tools:**
-1. **SQL Database Tools**
-2. **Document Retrieval Tool**
+### Available Tools
+- **SQL Database Tools**: For querying specific data points, calculations, or statistics from the database, especially Azure cloud data (e.g., costs, resource usage).
+- **Document Retrieval Tool**: For general knowledge, explanations, or information not specific to the database.
 
-**When using SQL tools:**
-- Always start by exploring the available tables using the `sql_db_list_tables` tool. Select one or more tables that might have any relation to user question.
-- Then examine the schema of relevant tables using the `sql_db_schema` tool.
-- **IMORTANT** When generating sql queries always enclose the colum name in double quotes
-- Finally, use `sql_db_query` to run a query and get the answer.
-- **DO NOT** make any DML statements (INSERT, UPDATE, DELETE, DROP, etc.) to the database.
-- Craft queries to select only the necessary columns and rows; avoid fetching all content unless explicitly required by the question.
-- **Important:** Ensure that the query is crafted using the exact column names, data types, and table relationships from the schema. Do not assume the schema; always base the query on the retrieved information.
-- Verify that the query aligns with the schema to avoid errors (e.g., incorrect column names or data types).
-- If the schema does not match expectations or if there are errors, adjust the query accordingly or inform the user of any discrepancies.
-- Use `WHERE` clauses to filter data based on the question's criteria.
-- Utilize aggregate functions (e.g., `SUM`, `AVG`, `COUNT`) for calculations like total cost, average usage, etc., instead of retrieving raw data and computing manually.
-- Avoid using `SELECT *` unless the question explicitly requires all columns.
-- Aim to make your queries efficient, retrieving only the data needed to answer the question.
+### Tool Selection Guide
+- Use **SQL tools** for questions like:
+  - "What is the total cost of Azure services last month?"
+  - "How many resources are active in my Azure subscription?"
+- Use the **document retrieval tool** for questions like:
+  - "What is Azure?"
+  - "How does cloud computing work?"
+- For questions needing both (e.g., "Explain the cost breakdown of my Azure services"), use both tools and combine the results.
 
-**When using the document retrieval tool:**
-- Use clear, specific queries to find the most relevant documents.
-- Synthesize information from multiple documents when needed.
+### Using SQL Tools
+1. **List Tables**: Use `sql_db_list_tables` to identify available tables related to the question.
+2. **Check Schema**: Use `sql_db_schema` on relevant tables to understand their structure.
+3. **Write Query**:
+   - Enclose column names in double quotes (e.g., `"column_name"`).
+   - Use **LIMIT 10** statement always unless and until you need all data to do calculations.
+   - Use exact column names and data types from the schema—do not assume.
+   - Select only necessary columns and rows; avoid `SELECT *` unless required.
+   - Apply `WHERE` clauses to filter data and aggregate functions (e.g., `SUM`, `AVG`, `COUNT`) for calculations.
+   - **DO NOT** use DML statements (INSERT, UPDATE, DELETE, DROP, etc.).
+4. **Execute**: Run the query with `sql_db_query`, ensuring it matches the schema to avoid errors.
+5. **Errors**: If the query fails or data is missing, inform the user and suggest refining the question.
 
-**Important guidelines:**
-- Choose the appropriate tool based on the nature of the question:
-  - For questions requiring specific data points, calculations, or statistics from the database—especially related to Azure cloud data—use the **SQL tools**.
-  - For questions seeking general knowledge, explanations, or information not specific to the database, use the **document retrieval tool**.
-- If the question requires both specific data and general knowledge, use both tools and combine the information in your response.
-- Always provide clear, concise responses based on the information obtained from the tools.
-- Never claim to know information that isn't provided by the tools. If you don't have enough information, say so clearly and suggest how the user might refine their question.
+### Using Document Retrieval Tool
+- Submit clear, specific queries to retrieve relevant documents.
+- Combine information from multiple documents if needed for a complete answer.
 
-**Note:** The database contains data related to Azure cloud services, including costs, resource usage, and other metrics. Therefore, questions about Azure data (e.g., costs, usage statistics) should primarily be answered using the SQL tools.
-"""
+### General Guidelines
+- Provide concise, accurate responses based solely on tool outputs.
+- If information is insufficient, say so and suggest how the user might refine their question.
+- Do not invent information not provided by the tools.
+- Maintain a professional, helpful tone, especially when addressing limitations.
+
+### Combining Tools
+- For mixed questions, fetch specific data with SQL tools first, then supplement with document retrieval insights.
+- Ensure the response is cohesive and fully answers the question.
+
+### Note
+The database contains Azure cloud service data (e.g., costs, usage metrics). Prioritize SQL tools for Azure-related questions."""
 
         agent = create_react_agent(
             model=self.llm,
@@ -225,31 +236,79 @@ class AgentService:
         if not thread_id:
             thread_id = "default"
 
-        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 10}
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 25}
 
         try:
             # Format the question as a message for the agent
             messages = [("human", question)]
 
-            # Stream the agent's response
-            async for event in self.agent_executor.astream(
-                {"messages": messages}, config
+            # async for event in self.agent_executor.astream(
+            #     {"messages": messages}, config
+            # ):
+            #     print(event)
+            # if "tools" in event:
+            #     for message in event["tools"]["messages"]:
+            #         print("\nTool Message")
+            #         print(message.content)
+            # if "agent" in event:
+            #     for message in event["agent"]["messages"]:
+            #         if message.tool_calls:
+            #             print("\nTool Calls")
+            #             print(message.tool_calls)
+            #         print("\nAgent Response")
+            #         print(message.content)
+            #         yield message.content + "\n"
+
+            async for current_message, metadata in self.agent_executor.astream(
+                {"messages": messages}, config, stream_mode="messages"
             ):
-                # print(event)
-                if "tools" in event:
-                    for message in event["tools"]["messages"]:
-                        print("\nTool Message")
-                        print(message.content)
-                if "agent" in event:
-                    for message in event["agent"]["messages"]:
-                        if message.tool_calls:
-                            print("\nTool Calls")
-                            print(message.tool_calls)
-                        print("\nAgent Response")
-                        print(message.content)
-                        yield message.content + "\n"
+                if isinstance(current_message, ToolMessage):
+                    # Yield tool message immediately
+                    tool_message = {
+                        "type": "tool_message",
+                        "content": current_message.content,
+                        "tool_call_id": current_message.tool_call_id,
+                        "tool_name": current_message.name,
+                    }
+                    yield json.dumps(tool_message) + "\n"
+
+                elif isinstance(current_message, AIMessage):
+                    if current_message.tool_calls:
+                        # Handle tool calls: wait until complete
+                        if (
+                            current_message.response_metadata.get("finish_reason")
+                            == "tool_calls"
+                        ):
+                            tool_call_message = {
+                                "type": "agent_tool_call",
+                                "tool_calls": [
+                                    {
+                                        "name": tool["name"],
+                                        "args": tool["args"],
+                                        "id": tool["id"],
+                                    }
+                                    for tool in current_message.tool_calls
+                                ],
+                            }
+                            yield json.dumps(tool_call_message) + "\n"
+                    else:
+                        # Stream agent content deltas
+                        if (
+                            current_message.content
+                        ):  # Only yield if the chunk has content
+                            delta_message = {
+                                "type": "agent_message_delta",
+                                "delta": current_message.content,
+                            }
+                            yield json.dumps(delta_message) + "\n"
+                        if (
+                            current_message.response_metadata.get("finish_reason")
+                            == "stop"
+                        ):
+                            # Signal completion
+                            completion_message = {"type": "agent_message_complete"}
+                            yield json.dumps(completion_message) + "\n"
 
         except Exception as e:
-            # Log and handle any errors that occur during streaming
             logger.error(f"Error streaming question: {str(e)}")
             yield "I encountered an error while processing your question.\n"

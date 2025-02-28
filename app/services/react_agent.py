@@ -13,6 +13,8 @@ from langgraph.types import Checkpointer, Send
 from rich import print
 from typing_extensions import Annotated, TypedDict
 
+from app.utils.logger import logger
+
 
 class AgentState(TypedDict):
     """State of the ReAct agent containing conversation history and step tracking."""
@@ -30,11 +32,9 @@ def create_react_agent(
 ) -> StateGraph:
     """Creates a ReAct agent using LangGraph and LangChain components."""
     # Setup tools
-    debug: bool = False
+    debug: bool = True
     store: BaseStore = None
     tool_node = ToolNode(tools)
-    print("*" * 20, "Tools", "*" * 20)
-    print(tool_node)
     tool_calling_enabled = bool(tools)
     model = model.bind_tools(tools)
 
@@ -58,6 +58,7 @@ def create_react_agent(
 
     async def call_model(state: AgentState, config: RunnableConfig) -> AgentState:
         response = cast(AIMessage, await model_runnable.ainvoke(state, config))
+        logger.debug(f"Remaining steps :{state['remaining_steps']}")
 
         # Check if we need to stop due to step limitations
         has_tool_calls = isinstance(response, AIMessage) and response.tool_calls
