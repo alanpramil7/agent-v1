@@ -276,54 +276,36 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
                         "tool_name": current_message.name,
                     }
                     yield json.dumps(tool_message) + "\n"
+                    self.database.add_message(
+                        current_message.id,
+                        conversation_id,
+                        "tool message",
+                        tool_message,
+                    )
 
-                elif isinstance(current_message, AIMessage):
-                    if current_message.tool_calls:
-                        # Handle tool calls: wait until complete
-                        if (
-                            current_message.response_metadata.get("finish_reason")
-                            == "tool_calls"
-                        ):
-                            tool_call_message = {
-                                "type": "agent_tool_call",
-                                "tool_calls": [
-                                    {
-                                        "name": tool["name"],
-                                        "args": tool["args"],
-                                        "id": tool["id"],
-                                    }
-                                    for tool in current_message.tool_calls
-                                ],
-                            }
-                            yield json.dumps(tool_call_message) + "\n"
-                    else:
-                        # Stream agent content deltas
-                        if (
-                            current_message.content
-                        ):  # Only yield if the chunk has content
-                            delta_message = {
-                                "type": "agent_message_delta",
-                                "delta": current_message.content,
-                            }
-                            logger.debug(current_message.content)
-                            complete_message += current_message.content
-                            yield json.dumps(delta_message) + "\n"
-                        if (
-                            current_message.response_metadata.get("finish_reason")
-                            == "stop"
-                        ):
-                            logger.debug("Completed.")
-                            # Signal completion
-                            completion_message = {"type": "agent_message_complete"}
-                            yield json.dumps(completion_message) + "\n"
-                            # Only add the complete message to database if it's not empty
-                            if complete_message.strip():
-                                self.database.add_message(
-                                    ai_message_id,
-                                    conversation_id,
-                                    "ai",
-                                    complete_message,
-                                )
+                if isinstance(current_message, AIMessage):
+                    # Stream agent content deltas
+                    if current_message.content:  # Only yield if the chunk has content
+                        delta_message = {
+                            "type": "agent_message_delta",
+                            "delta": current_message.content,
+                        }
+                        logger.debug(current_message.content)
+                        complete_message += current_message.content
+                        yield json.dumps(delta_message) + "\n"
+                    if current_message.response_metadata.get("finish_reason") == "stop":
+                        logger.debug("Completed.")
+                        # Signal completion
+                        completion_message = {"type": "agent_message_complete"}
+                        yield json.dumps(completion_message) + "\n"
+                        # Only add the complete message to database if it's not empty
+                        if complete_message.strip():
+                            self.database.add_message(
+                                ai_message_id,
+                                conversation_id,
+                                "ai",
+                                complete_message,
+                            )
 
         except Exception as e:
             logger.error(f"Error streaming question: {str(e)}")

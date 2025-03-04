@@ -14,6 +14,7 @@ import psycopg2
 import sqlite3
 from urllib.parse import urlparse
 from datetime import datetime
+import json
 
 from app.core.config import settings
 from app.utils.logger import logger
@@ -56,6 +57,7 @@ class DatabaseService:
             connection_string = settings.database
             result = urlparse(connection_string)
             username = result.username
+            # TODO: Remove hardcoded password
             password = result.password
             database = result.path[1:]
             hostname = result.hostname
@@ -389,13 +391,18 @@ class DatabaseService:
         message_id: str,
         conversation_id: str,
         sender: str,
-        content: str,
+        content: str | dict,
     ):
         """"""
         logger.debug("Adding message to database.")
         try:
             with self._get_connection() as conn:
                 cur = conn.cursor()
+
+                # Convert dict to JSON string if needed
+                if isinstance(content, dict):
+                    content = json.dumps(content)
+
                 cur.execute(
                     """
                     INSERT INTO agent_messages
