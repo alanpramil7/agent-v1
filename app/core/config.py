@@ -15,6 +15,7 @@ from typing import Dict, Type
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
 from langchain_community.document_loaders.base import BaseLoader
 from langchain_openai import AzureChatOpenAI
+from langchain_groq import ChatGroq
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -61,6 +62,8 @@ class Settings(BaseSettings):
     azure_embedding_endpoint: str
     embedding_api_version: str
 
+    groq_api_key: str
+
     # Database connection string
     database: str
 
@@ -81,6 +84,14 @@ class Settings(BaseSettings):
             openai_api_version=self.openai_api_version,
             api_key=self.azure_openai_api_key,
         )
+
+    # @property
+    # def llm(self) -> ChatGroq:
+    #     return ChatGroq(
+    #         # model="deepseek-r1-distill-llama-70b",
+    #         model="llama-3.3-70b-versatile",
+    #         api_key=self.groq_api_key,
+    #     )
 
     # Configure Pydantic to load environment variables from .env file
     model_config = SettingsConfigDict(env_file=".env")

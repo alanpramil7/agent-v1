@@ -53,4 +53,5 @@ def get_agent() -> AgentService:
         AgentService: A singleton instance of the AgentService
     """
     indexer = get_indexer()
-    return AgentService(indexer=indexer)
+    database = get_database()
+    return AgentService(indexer=indexer, database=database)

@@ -17,6 +17,8 @@ class AgentProcessingRequest(BaseModel):
     This model validates that the question is provided in the request.
     """
 
+    user_id: str = Field(..., description="User ID")
+    conversation_id: str = Field(..., description="Conversation ID")
     question: str = Field(..., description="User question to be processed by the agent")
 
     class Config:

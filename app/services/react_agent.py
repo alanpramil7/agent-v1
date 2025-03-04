@@ -32,7 +32,7 @@ def create_react_agent(
 ) -> StateGraph:
     """Creates a ReAct agent using LangGraph and LangChain components."""
     # Setup tools
-    debug: bool = True
+    debug: bool = False
     store: BaseStore = None
     tool_node = ToolNode(tools)
     tool_calling_enabled = bool(tools)
@@ -43,7 +43,11 @@ def create_react_agent(
     def debug_print_messages(messages):
         nonlocal current_model_call
         if messages:
-            print("*" * 20, f"Model call {current_model_call} with message", "*" * 20)
+            print(
+                "*" * 20,
+                f"Model call {current_model_call} with message count {len(messages)}",
+                "*" * 20,
+            )
             print(messages)
         current_model_call += 1
         return messages
@@ -52,7 +56,7 @@ def create_react_agent(
     system_message = SystemMessage(content=prompt or "")
     model_runnable = (
         (lambda state: [system_message] + state["messages"])
-        # | RunnableLambda(debug_print_messages)
+        | RunnableLambda(debug_print_messages)
         | model
     )
 

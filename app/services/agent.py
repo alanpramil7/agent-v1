@@ -7,6 +7,7 @@ SQL database tools, and document retrieval capabilities.
 
 import json
 from typing import Any, AsyncGenerator, Optional
+import uuid
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_community.utilities.sql_database import SQLDatabase
@@ -17,6 +18,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from rich import print
 
 from app.core.config import settings
+from app.services.database import DatabaseService
 from app.services.indexer import IndexerService
 from app.services.react_agent import create_react_agent
 from app.utils.logger import logger
@@ -31,7 +33,7 @@ class AgentService:
     accurate and helpful responses to user questions.
     """
 
-    def __init__(self, indexer: IndexerService) -> None:
+    def __init__(self, indexer: IndexerService, database: DatabaseService) -> None:
         """
         Initialize the Agent Service with necessary components.
 
@@ -41,6 +43,7 @@ class AgentService:
         # Initialize the language model from settings
         self.llm = settings.llm
         self.indexer = indexer
+        self.database = database
 
         # Set up SQL database connection and tools
         self.db = SQLDatabase.from_uri(settings.database)
@@ -133,6 +136,7 @@ class AgentService:
 - For questions needing both (e.g., "Explain the cost breakdown of my Azure services"), use both tools and combine the results.
 
 ### Using SQL Tools
+**IMPORTANT**: Don't use recommendation table for sql related questions unless and until it is necessary or requested by user.
 1. **List Tables**: Use `sql_db_list_tables` to identify available tables related to the question.
 2. **Check Schema**: Use `sql_db_schema` on relevant tables to understand their structure.
 3. **Write Query**:
@@ -215,7 +219,10 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
             }
 
     async def stream_question(
-        self, question: str, thread_id: Optional[str] = None
+        self,
+        user_id: str,
+        conversation_id: str,
+        question: str,
     ) -> AsyncGenerator[str, None]:
         """
         Stream a user question using the LangGraph agent.
@@ -224,8 +231,9 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
         rather than waiting for the entire response to be generated.
 
         Args:
+            user_id (str): The user's ID
+            conversation_id (Optional[str]): Conversation ID for maintaining conversation context
             question (str): The user's question
-            thread_id (Optional[str]): Thread ID for maintaining conversation context
 
         Yields:
             str: Chunks of the agent's response
@@ -233,31 +241,28 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
         logger.debug(f"Streaming response for question: {question}")
 
         # Use default thread_id if none provided
-        if not thread_id:
-            thread_id = "default"
+        if not conversation_id:
+            conversation_id = "default"
 
-        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 25}
+        config = {"configurable": {"thread_id": conversation_id}, "recursion_limit": 25}
+
+        # Add conversation to database
+        if not self.database.conversation_exists(conversation_id):
+            self.database.add_conversation(conversation_id, user_id)
 
         try:
             # Format the question as a message for the agent
             messages = [("human", question)]
 
-            # async for event in self.agent_executor.astream(
-            #     {"messages": messages}, config
-            # ):
-            #     print(event)
-            # if "tools" in event:
-            #     for message in event["tools"]["messages"]:
-            #         print("\nTool Message")
-            #         print(message.content)
-            # if "agent" in event:
-            #     for message in event["agent"]["messages"]:
-            #         if message.tool_calls:
-            #             print("\nTool Calls")
-            #             print(message.tool_calls)
-            #         print("\nAgent Response")
-            #         print(message.content)
-            #         yield message.content + "\n"
+            # Add user message to database
+            user_message_id = str(uuid.uuid4())
+            self.database.add_message(
+                user_message_id, conversation_id, "user", question
+            )
+
+            # Create a single message ID for the AI response
+            ai_message_id = str(uuid.uuid4())
+            complete_message = ""
 
             async for current_message, metadata in self.agent_executor.astream(
                 {"messages": messages}, config, stream_mode="messages"
@@ -300,14 +305,25 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
                                 "type": "agent_message_delta",
                                 "delta": current_message.content,
                             }
+                            logger.debug(current_message.content)
+                            complete_message += current_message.content
                             yield json.dumps(delta_message) + "\n"
                         if (
                             current_message.response_metadata.get("finish_reason")
                             == "stop"
                         ):
+                            logger.debug("Completed.")
                             # Signal completion
                             completion_message = {"type": "agent_message_complete"}
                             yield json.dumps(completion_message) + "\n"
+                            # Only add the complete message to database if it's not empty
+                            if complete_message.strip():
+                                self.database.add_message(
+                                    ai_message_id,
+                                    conversation_id,
+                                    "ai",
+                                    complete_message,
+                                )
 
         except Exception as e:
             logger.error(f"Error streaming question: {str(e)}")

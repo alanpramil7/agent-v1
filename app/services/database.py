@@ -10,9 +10,10 @@ about indexed content, enabling tracking of processed resources and preventing
 redundant processing.
 """
 
+import psycopg2
 import sqlite3
+from urllib.parse import urlparse
 from datetime import datetime
-from typing import Optional, Tuple
 
 from app.core.config import settings
 from app.utils.logger import logger
@@ -39,10 +40,10 @@ class DatabaseService:
         Sets up the database path and creates required tables if they don't exist.
         """
         # Define database path in the data directory
-        self.db_path = str(settings.data_dir / "rag.db")
+        # self.db_path = str(settings.data_dir / "rag.db")
         # Initialize tables on service start
         self._initialize_tables()
-        logger.info(f"Database service initialized with database at {self.db_path}")
+        # logger.info(f"Database service initialized with database at {self.db_path}")
 
     def _get_connection(self) -> sqlite3.Connection:
         """
@@ -52,8 +53,22 @@ class DatabaseService:
             sqlite3.Connection: A connection to the SQLite database
         """
         try:
-            return sqlite3.connect(self.db_path)
-        except sqlite3.Error as e:
+            connection_string = settings.database
+            result = urlparse(connection_string)
+            username = result.username
+            password = result.password
+            database = result.path[1:]
+            hostname = result.hostname
+            port = result.port
+            conn = psycopg2.connect(
+                database=database,
+                user=username,
+                password="qwert@123",
+                host=hostname,
+                port=port,
+            )
+            return conn
+        except psycopg2.Error as e:
             logger.error(f"Failed to connect to database: {str(e)}")
             raise
 
@@ -92,6 +107,23 @@ class DatabaseService:
                             created_at TIMESTAMP
                             )
                             """)
+                cur.execute("""
+                            CREATE TABLE IF NOT EXISTS agent_conversation(
+                            conversation_id TEXT PRIMARY KEY,
+                            user_id TEXT,
+                            created_at TIMESTAMP
+                            )
+                            """)
+                cur.execute("""
+                            CREATE TABLE IF NOT EXISTS agent_messages(
+                            message_id TEXT PRIMARY KEY,
+                            conversation_id TEXT,
+                            sender TEXT,
+                            content TEXT,
+                            created_at TIMESTAMP
+                            )
+                            """)
+
                 logger.debug("Database tables initialized successfully")
         except sqlite3.Error as e:
             logger.error(f"Failed to initialize database tables: {str(e)}")
@@ -306,4 +338,78 @@ class DatabaseService:
                 return exists
         except sqlite3.Error as e:
             logger.error(f"Failed to check if website exists: {str(e)}")
+            raise
+
+    def add_conversation(self, conversation_id: str, user_id: str):
+        """"""
+        logger.debug("Adding conversatioh to databse.")
+        try:
+            with self._get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO agent_conversation
+                    (conversation_id, user_id, created_at)
+                    VALUES(%s, %s, %s)
+                    """,
+                    (
+                        conversation_id,
+                        user_id,
+                        datetime.utcnow(),
+                    ),
+                )
+
+        except psycopg2.Error as e:
+            logger.error(f"Failed to add conversation detail to the databse: {e}")
+            raise
+
+    def conversation_exists(self, conversation_id: str) -> bool:
+        """"""
+        logger.debug(f"Checking if conversation exists: {conversation_id}")
+        try:
+            with self._get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT 1 FROM agent_conversation
+                    WHERE conversation_id = %s
+                    LIMIT 1
+                    """,
+                    (conversation_id,),
+                )
+                result = cur.fetchone()
+                exists = bool(result)
+                return exists
+        except psycopg2.Error as e:
+            logger.error(f"Failed to check if conversation exists: {str(e)}")
+            raise
+
+    def add_message(
+        self,
+        message_id: str,
+        conversation_id: str,
+        sender: str,
+        content: str,
+    ):
+        """"""
+        logger.debug("Adding message to database.")
+        try:
+            with self._get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO agent_messages
+                    (message_id, conversation_id, sender, content,  created_at)
+                    VALUES(%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        message_id,
+                        conversation_id,
+                        sender,
+                        content,
+                        datetime.utcnow(),
+                    ),
+                )
+        except psycopg2.Error as e:
+            logger.debug(f"Failed to add messages in the database: {e}")
             raise

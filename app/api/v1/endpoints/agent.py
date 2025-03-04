@@ -87,7 +87,12 @@ async def stream_agent(
     try:
         # Return a streaming response
         return StreamingResponse(
-            agent.stream_question(request.question), media_type="text/plain"
+            agent.stream_question(
+                request.user_id,
+                request.conversation_id,
+                request.question,
+            ),
+            media_type="text/plain",
         )
     except Exception as e:
         logger.error(f"Error streaming response to question: {str(e)}")
