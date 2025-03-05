@@ -6,12 +6,12 @@ SQL database tools, and document retrieval capabilities.
 """
 
 import json
-from typing import Any, AsyncGenerator, Optional
 import uuid
+from typing import Any, AsyncGenerator, Optional
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_community.utilities.sql_database import SQLDatabase
-from langchain_core.messages import ToolMessage, AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_core.tools.base import BaseTool
 from langgraph.checkpoint.memory import MemorySaver
@@ -97,6 +97,7 @@ class AgentService:
             docs = await retriver.ainvoke(query)
 
             if not docs:
+                logger.debug("No document found.")
                 return "No documents are found."
 
             # Log retrieved documents for debugging
@@ -121,6 +122,7 @@ class AgentService:
         """
         # Comprehensive system message that guides the agent's behavior
         system_message = """You are a helpful and knowledgeable assistant with access to tools to provide accurate and concise answers to user questions.
+Carefuly anlayze the user quesiton. Formualte a plan and execute step by step.
 
 ### Available Tools
 - **SQL Database Tools**: For querying specific data points, calculations, or statistics from the database, especially Azure cloud data (e.g., costs, resource usage).
@@ -133,7 +135,6 @@ class AgentService:
 - Use the **document retrieval tool** for questions like:
   - "What is Azure?"
   - "How does cloud computing work?"
-- For questions needing both (e.g., "Explain the cost breakdown of my Azure services"), use both tools and combine the results.
 
 ### Using SQL Tools
 **IMPORTANT**: Don't use recommendation table for sql related questions unless and until it is necessary or requested by user.
@@ -141,7 +142,7 @@ class AgentService:
 2. **Check Schema**: Use `sql_db_schema` on relevant tables to understand their structure.
 3. **Write Query**:
    - Enclose column names in double quotes (e.g., `"column_name"`).
-   - Use **LIMIT 10** statement always unless and until you need all data to do calculations.
+   - Use **LIMIT 10** statement always.
    - Use exact column names and data types from the schema—do not assume.
    - Select only necessary columns and rows; avoid `SELECT *` unless required.
    - Apply `WHERE` clauses to filter data and aggregate functions (e.g., `SUM`, `AVG`, `COUNT`) for calculations.
@@ -158,10 +159,6 @@ class AgentService:
 - If information is insufficient, say so and suggest how the user might refine their question.
 - Do not invent information not provided by the tools.
 - Maintain a professional, helpful tone, especially when addressing limitations.
-
-### Combining Tools
-- For mixed questions, fetch specific data with SQL tools first, then supplement with document retrieval insights.
-- Ensure the response is cohesive and fully answers the question.
 
 ### Note
 The database contains Azure cloud service data (e.g., costs, usage metrics). Prioritize SQL tools for Azure-related questions."""
@@ -224,43 +221,23 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
         conversation_id: str,
         question: str,
     ) -> AsyncGenerator[str, None]:
-        """
-        Stream a user question using the LangGraph agent.
-
-        This method allows for returning the agent's response as chunks in real-time,
-        rather than waiting for the entire response to be generated.
-
-        Args:
-            user_id (str): The user's ID
-            conversation_id (Optional[str]): Conversation ID for maintaining conversation context
-            question (str): The user's question
-
-        Yields:
-            str: Chunks of the agent's response
-        """
         logger.debug(f"Streaming response for question: {question}")
 
-        # Use default thread_id if none provided
         if not conversation_id:
             conversation_id = "default"
 
         config = {"configurable": {"thread_id": conversation_id}, "recursion_limit": 25}
 
-        # Add conversation to database
         if not self.database.conversation_exists(conversation_id):
             self.database.add_conversation(conversation_id, user_id)
 
         try:
-            # Format the question as a message for the agent
             messages = [("human", question)]
-
-            # Add user message to database
             user_message_id = str(uuid.uuid4())
             self.database.add_message(
                 user_message_id, conversation_id, "user", question
             )
 
-            # Create a single message ID for the AI response
             ai_message_id = str(uuid.uuid4())
             complete_message = ""
 
@@ -268,14 +245,13 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
                 {"messages": messages}, config, stream_mode="messages"
             ):
                 if isinstance(current_message, ToolMessage):
-                    # Yield tool message immediately
                     tool_message = {
                         "type": "tool_message",
                         "content": current_message.content,
                         "tool_call_id": current_message.tool_call_id,
                         "tool_name": current_message.name,
                     }
-                    yield json.dumps(tool_message) + "\n"
+                    yield f"data: {json.dumps(tool_message)}\n\n"
                     self.database.add_message(
                         current_message.id,
                         conversation_id,
@@ -284,22 +260,18 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
                     )
 
                 if isinstance(current_message, AIMessage):
-                    # Stream agent content deltas
-                    if current_message.content:  # Only yield if the chunk has content
+                    if current_message.content:
                         delta_message = {
                             "type": "agent_message_delta",
                             "delta": current_message.content,
                         }
-                        logger.debug(current_message.content)
                         complete_message += current_message.content
-                        yield json.dumps(delta_message) + "\n"
+                        yield f"data: {json.dumps(delta_message)}\n\n"
                     if current_message.response_metadata.get("finish_reason") == "stop":
-                        logger.debug("Completed.")
-                        # Signal completion
                         completion_message = {"type": "agent_message_complete"}
-                        yield json.dumps(completion_message) + "\n"
-                        # Only add the complete message to database if it's not empty
+                        yield f"data: {json.dumps(completion_message)}\n\n"
                         if complete_message.strip():
+                            logger.debug(complete_message)
                             self.database.add_message(
                                 ai_message_id,
                                 conversation_id,
@@ -309,4 +281,4 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
 
         except Exception as e:
             logger.error(f"Error streaming question: {str(e)}")
-            yield "I encountered an error while processing your question.\n"
+            yield "data: I encountered an error while processing your question.\n\n"

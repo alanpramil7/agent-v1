@@ -10,11 +10,12 @@ about indexed content, enabling tracking of processed resources and preventing
 redundant processing.
 """
 
-import psycopg2
-import sqlite3
-from urllib.parse import urlparse
-from datetime import datetime
 import json
+import sqlite3
+from datetime import datetime
+from urllib.parse import urlparse
+
+import psycopg2
 
 from app.core.config import settings
 from app.utils.logger import logger
@@ -151,9 +152,9 @@ class DatabaseService:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                          INSERT OR REPLACE INTO wiki
+                          INSERT INTO wiki
                           (organization, project, wiki_identifier, created_at)
-                          VALUES(?, ?, ?, ?)                      
+                          VALUES(%s, %s, %s, %s)
                           """,
                     (
                         organization,
@@ -197,10 +198,10 @@ class DatabaseService:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    SELECT 1 FROM wiki 
-                    WHERE organization = ? 
-                    AND project = ? 
-                    AND wiki_identifier = ?
+                    SELECT 1 FROM wiki
+                    WHERE organization = %s
+                    AND project = %s
+                    AND wiki_identifier = %s
                     LIMIT 1
                     """,
                     (organization, project, wiki_identifier),
@@ -229,9 +230,9 @@ class DatabaseService:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                            INSERT OR REPLACE INTO document
+                            INSERT INTO document
                             (file_name, created_at)
-                            VALUES (?, ?)
+                            VALUES (%s, %s)
                             """,
                     (file_name, datetime.utcnow()),
                 )
@@ -262,8 +263,8 @@ class DatabaseService:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    SELECT 1 FROM document 
-                    WHERE file_name = ? 
+                    SELECT 1 FROM document
+                    WHERE file_name = %s
                     LIMIT 1
                     """,
                     (file_name,),
@@ -292,9 +293,9 @@ class DatabaseService:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                            INSERT OR REPLACE INTO website
+                            INSERT INTO website
                             (url, created_at)
-                            VALUES(?, ?)
+                            VALUES(%s, %s)
                             """,
                     (
                         url,
@@ -328,8 +329,8 @@ class DatabaseService:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                        SELECT 1 FROM website 
-                        WHERE url = ? 
+                        SELECT 1 FROM website
+                        WHERE url = %s
                         LIMIT 1
                         """,
                     (url,),
@@ -394,7 +395,7 @@ class DatabaseService:
         content: str | dict,
     ):
         """"""
-        logger.debug("Adding message to database.")
+        logger.debug(f"Adding {sender} message to database.")
         try:
             with self._get_connection() as conn:
                 cur = conn.cursor()

@@ -48,14 +48,14 @@ def create_react_agent(
                 f"Model call {current_model_call} with message count {len(messages)}",
                 "*" * 20,
             )
-            print(messages)
+            # print(messages)
         current_model_call += 1
         return messages
 
     # Create system message and model chain
     system_message = SystemMessage(content=prompt or "")
     model_runnable = (
-        (lambda state: [system_message] + state["messages"])
+        (lambda state: [system_message] + state["messages"][-25:])
         | RunnableLambda(debug_print_messages)
         | model
     )
