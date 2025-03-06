@@ -101,8 +101,10 @@ class AgentService:
                 return "No documents are found."
 
             # Log retrieved documents for debugging
-            for i, doc in enumerate(docs):
-                logger.debug(f"Retrieved document {i}: {doc}")
+            # for i, doc in enumerate(docs):
+            #     logger.debug(f"Retrieved document {i}: {doc}")
+            if docs:
+                logger.debug(f"Documents retrived {len(docs)}")
 
             # Format documents into a readable context string
             context = "\n\n".join(
@@ -121,47 +123,79 @@ class AgentService:
             Agent executor that can process user questions
         """
         # Comprehensive system message that guides the agent's behavior
-        system_message = """You are a helpful and knowledgeable assistant with access to tools to provide accurate and concise answers to user questions.
-Carefuly anlayze the user quesiton. Formualte a plan and execute step by step.
 
-### Available Tools
-- **SQL Database Tools**: For querying specific data points, calculations, or statistics from the database, especially Azure cloud data (e.g., costs, resource usage).
-- **Document Retrieval Tool**: For general knowledge, explanations, or information not specific to the database.
+        #         system_message = """You are a helpful and knowledgeable assistant with access to tools to provide accurate and concise answers to user questions.
+        # Carefuly anlayze the user quesiton. Formualte a plan and execute step by step.
+        #
+        # ### Available Tools
+        # - **SQL Database Tools**: For querying specific data points, calculations, or statistics from the database, especially Azure cloud data (e.g., costs, resource usage).
+        # - **Document Retrieval Tool**: For general knowledge, explanations, or information not specific to the database.
+        #
+        # ### Tool Selection Guide
+        # - Use **SQL tools** for questions like:
+        #   - "What is the total cost of Azure services last month?"
+        #   - "How many resources are active in my Azure subscription?"
+        # - Use the **document retrieval tool** for questions like:
+        #   - "What is Azure?"
+        #   - "How does cloud computing work?"
+        #
+        # ### Using SQL Tools
+        # **IMPORTANT**: Don't use recommendation table for sql related questions unless and until it is necessary or requested by user.
+        # 1. **List Tables**: Use `sql_db_list_tables` to identify available tables related to the question.
+        # 2. **Check Schema**: Use `sql_db_schema` on relevant tables to understand their structure.
+        # 3. **Write Query**:
+        #    - Enclose column names in double quotes (e.g., `"column_name"`).
+        #    - Use **LIMIT 10** statement always.
+        #    - Use exact column names and data types from the schema—do not assume.
+        #    - Select only necessary columns and rows; avoid `SELECT *` unless required.
+        #    - Apply `WHERE` clauses to filter data and aggregate functions (e.g., `SUM`, `AVG`, `COUNT`) for calculations.
+        #    - **DO NOT** use DML statements (INSERT, UPDATE, DELETE, DROP, etc.).
+        # 4. **Execute**: Run the query with `sql_db_query`, ensuring it matches the schema to avoid errors.
+        # 5. **Errors**: If the query fails or data is missing, inform the user and suggest refining the question.
+        #
+        # ### Using Document Retrieval Tool
+        # - Submit clear, specific queries to retrieve relevant documents.
+        # - Combine information from multiple documents if needed for a complete answer.
+        #
+        # ### General Guidelines
+        # - Provide concise, accurate responses based solely on tool outputs.
+        # - If information is insufficient, say so and suggest how the user might refine their question.
+        # - Do not invent information not provided by the tools.
+        # - Maintain a professional, helpful tone, especially when addressing limitations.
+        #
+        # ### Note
+        # The database contains Azure cloud service data (e.g., costs, usage metrics). Prioritize SQL tools for Azure-related questions."""
 
-### Tool Selection Guide
-- Use **SQL tools** for questions like:
-  - "What is the total cost of Azure services last month?"
-  - "How many resources are active in my Azure subscription?"
-- Use the **document retrieval tool** for questions like:
-  - "What is Azure?"
-  - "How does cloud computing work?"
+        system_message = """"
+            You are a helpful and knowledgeable assistant with access to SQL Database Tools and Document Retrieval Tool. Your responses must be accurate, concise, and follow the guidelines below.
 
-### Using SQL Tools
-**IMPORTANT**: Don't use recommendation table for sql related questions unless and until it is necessary or requested by user.
-1. **List Tables**: Use `sql_db_list_tables` to identify available tables related to the question.
-2. **Check Schema**: Use `sql_db_schema` on relevant tables to understand their structure.
-3. **Write Query**:
-   - Enclose column names in double quotes (e.g., `"column_name"`).
-   - Use **LIMIT 10** statement always.
-   - Use exact column names and data types from the schema—do not assume.
-   - Select only necessary columns and rows; avoid `SELECT *` unless required.
-   - Apply `WHERE` clauses to filter data and aggregate functions (e.g., `SUM`, `AVG`, `COUNT`) for calculations.
-   - **DO NOT** use DML statements (INSERT, UPDATE, DELETE, DROP, etc.).
-4. **Execute**: Run the query with `sql_db_query`, ensuring it matches the schema to avoid errors.
-5. **Errors**: If the query fails or data is missing, inform the user and suggest refining the question.
+            ### Tool Selection and Usage
+            - **SQL Database Tools:** Use these for queries like “What is the total cost of Azure services last month?” or “How many resources are active in my Azure subscription?”
+              - **Steps:**
+                1. **List Tables:** Use `sql_db_list_tables` to see available tables.
+                2. **Check Schema:** Use `sql_db_schema` on relevant tables to verify column names and data types.
+                3. **Construct and Execute Query:** Formulate queries using the exact column names, enclose them in double quotes, and use `LIMIT 10` to avoid large results.
+                4. **Error Handling and Fallback:**
+                   - If a query returns an error or an empty result:
+                     - Log the error/reason.
+                     - Loop through a predefined list of alternative tables or modify the query (e.g., adjusting the WHERE clause) to attempt retrieving similar data.
+                     - Continue this fallback process for a couple of iterations until a result is found or all alternatives are exhausted.
+                   - Report back if no alternatives yield results.
+            - **Document Retrieval Tool:** Use for questions like “What is Azure?” or “How does cloud computing work?”
 
-### Using Document Retrieval Tool
-- Submit clear, specific queries to retrieve relevant documents.
-- Combine information from multiple documents if needed for a complete answer.
+            ### General Guidelines
+            - **Conciseness & Accuracy:** Provide brief, well-supported answers based solely on tool outputs.
+            - **Error Resilience:** Instead of returning a raw error message, explain the issue, attempt alternative queries, and document the fallback process.
+            - **Structured Responses:** Organize your response with clear headers or sections where necessary.
+            - **No Invented Data:** Only use verifiable outputs from the tools. If data is missing, suggest refining the query.
+            - **SQL Specifics:**
+              - Always enclose column names in double quotes (e.g., `"column_name"`).
+              - Use exact column names from the schema.
+              - Avoid using `SELECT *` unless absolutely required.
+              - Do not use any DML statements (INSERT, UPDATE, DELETE, DROP, etc.).
 
-### General Guidelines
-- Provide concise, accurate responses based solely on tool outputs.
-- If information is insufficient, say so and suggest how the user might refine their question.
-- Do not invent information not provided by the tools.
-- Maintain a professional, helpful tone, especially when addressing limitations.
-
-### Note
-The database contains Azure cloud service data (e.g., costs, usage metrics). Prioritize SQL tools for Azure-related questions."""
+            Follow these steps to ensure robust, error-tolerant SQL querying, and a high-quality overall response from the language model.
+        """
 
         agent = create_react_agent(
             model=self.llm,
@@ -172,48 +206,48 @@ The database contains Azure cloud service data (e.g., costs, usage metrics). Pri
 
         return agent
 
-    async def process_question(
-        self, question: str, thread_id: Optional[str] = None
-    ) -> Any:
-        """
-        Process a user question using the LangGraph agent.
-
-        Args:
-            question (str): The user's question
-            thread_id (Optional[str]): Thread ID for maintaining conversation context
-
-        Returns:
-            The agent's response or error information
-        """
-        logger.debug(f"Processing question: {question}")
-
-        # Use default thread_id if none provided
-        if not thread_id:
-            thread_id = "default"
-
-        # Configure the thread ID for the agent
-        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 10}
-
-        try:
-            # Format the question as a message for the agent
-            messages = [("human", question)]
-
-            # Invoke the agent with the message
-            result = await self.agent_executor.ainvoke({"messages": messages}, config)
-
-            # Extract the final answer from the agent's response
-            final_answer = result["messages"][-1].content
-
-            return final_answer
-
-        except Exception as e:
-            # Log and handle any errors that occur during processing
-            logger.error(f"Error processing question: {str(e)}")
-            return {
-                "answer": "I apologize, but I encountered an error while processing your question.",
-                "status": "error",
-                "error": str(e),
-            }
+    # async def process_question(
+    #     self, question: str, thread_id: Optional[str] = None
+    # ) -> Any:
+    #     """
+    #     Process a user question using the LangGraph agent.
+    #
+    #     Args:
+    #         question (str): The user's question
+    #         thread_id (Optional[str]): Thread ID for maintaining conversation context
+    #
+    #     Returns:
+    #         The agent's response or error information
+    #     """
+    #     logger.debug(f"Processing question: {question}")
+    #
+    #     # Use default thread_id if none provided
+    #     if not thread_id:
+    #         thread_id = "default"
+    #
+    #     # Configure the thread ID for the agent
+    #     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 10}
+    #
+    #     try:
+    #         # Format the question as a message for the agent
+    #         messages = [("human", question)]
+    #
+    #         # Invoke the agent with the message
+    #         result = await self.agent_executor.ainvoke({"messages": messages}, config)
+    #
+    #         # Extract the final answer from the agent's response
+    #         final_answer = result["messages"][-1].content
+    #
+    #         return final_answer
+    #
+    #     except Exception as e:
+    #         # Log and handle any errors that occur during processing
+    #         logger.error(f"Error processing question: {str(e)}")
+    #         return {
+    #             "answer": "I apologize, but I encountered an error while processing your question.",
+    #             "status": "error",
+    #             "error": str(e),
+    #         }
 
     async def stream_question(
         self,

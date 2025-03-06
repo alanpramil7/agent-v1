@@ -18,6 +18,13 @@ from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.utils.logger import logger
 
+# TODO: Move these environment variables to a proper configuration management
+# system in production. Avoid hardcoding sensitive information like API keys.
+os.environ["LANGSMITH_TRACING"] = "true"
+os.environ["LANGSMITH_API_KEY"] = "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"
+os.environ["LANGSMITH_ENDPOINT"] = "https://api.smith.langchain.com"
+os.environ["LANGSMITH_PROJECT"] = "sql-agent"
+
 
 def create_application() -> FastAPI:
     """
