@@ -7,19 +7,18 @@ SQL database tools, and document retrieval capabilities.
 
 import json
 import uuid
-from typing import Any, AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_community.utilities.sql_database import SQLDatabase
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_core.tools.base import BaseTool
-from langgraph.checkpoint.memory import MemorySaver
 from rich import print
 
 from app.core.config import settings
-from app.services.database import DatabaseService
 from app.services.indexer import IndexerService
+from app.services.memory import MemoryService
 from app.services.react_agent import create_react_agent
 from app.utils.logger import logger
 
@@ -33,7 +32,11 @@ class AgentService:
     accurate and helpful responses to user questions.
     """
 
-    def __init__(self, indexer: IndexerService, database: DatabaseService) -> None:
+    def __init__(
+        self,
+        indexer: IndexerService,
+        memory: MemoryService,
+    ) -> None:
         """
         Initialize the Agent Service with necessary components.
 
@@ -43,7 +46,6 @@ class AgentService:
         # Initialize the language model from settings
         self.llm = settings.llm
         self.indexer = indexer
-        self.database = database
 
         # Set up SQL database connection and tools
         self.db = SQLDatabase.from_uri(settings.database)
@@ -57,8 +59,7 @@ class AgentService:
         self.tools = self.sql_tools + [self.retriver_tool]
 
         # Create the agent executor
-        self.memory = MemorySaver()
-        self.agent_executor = self._create_agent()
+        self.memory = memory
 
     def _create_retriver_tool(self) -> BaseTool:
         """
@@ -115,7 +116,7 @@ class AgentService:
 
         return retrive_documents
 
-    def _create_agent(self):
+    async def _create_agent(self):
         """
         Create a LangGraph agent with the configured tools and system prompt.
 
@@ -197,11 +198,12 @@ class AgentService:
             Follow these steps to ensure robust, error-tolerant SQL querying, and a high-quality overall response from the language model.
         """
 
+        agent_memory = await self.memory.get_memory_saver()
         agent = create_react_agent(
             model=self.llm,
             tools=self.tools,
             prompt=system_message,
-            checkpointer=self.memory,
+            checkpointer=agent_memory,
         )
 
         return agent
@@ -262,20 +264,16 @@ class AgentService:
 
         config = {"configurable": {"thread_id": conversation_id}, "recursion_limit": 25}
 
-        if not self.database.conversation_exists(conversation_id):
-            self.database.add_conversation(conversation_id, user_id)
-
         try:
+            agent = await self._create_agent()
+
             messages = [("human", question)]
             user_message_id = str(uuid.uuid4())
-            self.database.add_message(
-                user_message_id, conversation_id, "user", question
-            )
 
             ai_message_id = str(uuid.uuid4())
             complete_message = ""
 
-            async for current_message, metadata in self.agent_executor.astream(
+            async for current_message, metadata in agent.astream(
                 {"messages": messages}, config, stream_mode="messages"
             ):
                 if isinstance(current_message, ToolMessage):
@@ -286,12 +284,6 @@ class AgentService:
                         "tool_name": current_message.name,
                     }
                     yield f"data: {json.dumps(tool_message)}\n\n"
-                    self.database.add_message(
-                        current_message.id,
-                        conversation_id,
-                        "tool message",
-                        tool_message,
-                    )
 
                 if isinstance(current_message, AIMessage):
                     if current_message.content:
@@ -306,12 +298,6 @@ class AgentService:
                         yield f"data: {json.dumps(completion_message)}\n\n"
                         if complete_message.strip():
                             logger.debug(complete_message)
-                            self.database.add_message(
-                                ai_message_id,
-                                conversation_id,
-                                "ai",
-                                complete_message,
-                            )
 
         except Exception as e:
             logger.error(f"Error streaming question: {str(e)}")

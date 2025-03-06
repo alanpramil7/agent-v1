@@ -110,22 +110,6 @@ class DatabaseService:
                             created_at TIMESTAMP
                             )
                             """)
-                cur.execute("""
-                            CREATE TABLE IF NOT EXISTS agent_conversation(
-                            conversation_id TEXT PRIMARY KEY,
-                            user_id TEXT,
-                            created_at TIMESTAMP
-                            )
-                            """)
-                cur.execute("""
-                            CREATE TABLE IF NOT EXISTS agent_messages(
-                            message_id TEXT PRIMARY KEY,
-                            conversation_id TEXT,
-                            sender TEXT,
-                            content TEXT,
-                            created_at TIMESTAMP
-                            )
-                            """)
 
                 logger.debug("Database tables initialized successfully")
         except sqlite3.Error as e:
@@ -343,81 +327,81 @@ class DatabaseService:
             logger.error(f"Failed to check if website exists: {str(e)}")
             raise
 
-    def add_conversation(self, conversation_id: str, user_id: str):
-        """"""
-        logger.debug("Adding conversatioh to databse.")
-        try:
-            with self._get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO agent_conversation
-                    (conversation_id, user_id, created_at)
-                    VALUES(%s, %s, %s)
-                    """,
-                    (
-                        conversation_id,
-                        user_id,
-                        datetime.utcnow(),
-                    ),
-                )
-
-        except psycopg2.Error as e:
-            logger.error(f"Failed to add conversation detail to the databse: {e}")
-            raise
-
-    def conversation_exists(self, conversation_id: str) -> bool:
-        """"""
-        logger.debug(f"Checking if conversation exists: {conversation_id}")
-        try:
-            with self._get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    SELECT 1 FROM agent_conversation
-                    WHERE conversation_id = %s
-                    LIMIT 1
-                    """,
-                    (conversation_id,),
-                )
-                result = cur.fetchone()
-                exists = bool(result)
-                return exists
-        except psycopg2.Error as e:
-            logger.error(f"Failed to check if conversation exists: {str(e)}")
-            raise
-
-    def add_message(
-        self,
-        message_id: str,
-        conversation_id: str,
-        sender: str,
-        content: str | dict,
-    ):
-        """"""
-        logger.debug(f"Adding {sender} message to database.")
-        try:
-            with self._get_connection() as conn:
-                cur = conn.cursor()
-
-                # Convert dict to JSON string if needed
-                if isinstance(content, dict):
-                    content = json.dumps(content)
-
-                cur.execute(
-                    """
-                    INSERT INTO agent_messages
-                    (message_id, conversation_id, sender, content,  created_at)
-                    VALUES(%s, %s, %s, %s, %s)
-                    """,
-                    (
-                        message_id,
-                        conversation_id,
-                        sender,
-                        content,
-                        datetime.utcnow(),
-                    ),
-                )
-        except psycopg2.Error as e:
-            logger.debug(f"Failed to add messages in the database: {e}")
-            raise
+    # def add_conversation(self, conversation_id: str, user_id: str):
+    #     """"""
+    #     logger.debug("Adding conversatioh to databse.")
+    #     try:
+    #         with self._get_connection() as conn:
+    #             cur = conn.cursor()
+    #             cur.execute(
+    #                 """
+    #                 INSERT INTO agent_conversation
+    #                 (conversation_id, user_id, created_at)
+    #                 VALUES(%s, %s, %s)
+    #                 """,
+    #                 (
+    #                     conversation_id,
+    #                     user_id,
+    #                     datetime.utcnow(),
+    #                 ),
+    #             )
+    #
+    #     except psycopg2.Error as e:
+    #         logger.error(f"Failed to add conversation detail to the databse: {e}")
+    #         raise
+    #
+    # def conversation_exists(self, conversation_id: str) -> bool:
+    #     """"""
+    #     logger.debug(f"Checking if conversation exists: {conversation_id}")
+    #     try:
+    #         with self._get_connection() as conn:
+    #             cur = conn.cursor()
+    #             cur.execute(
+    #                 """
+    #                 SELECT 1 FROM agent_conversation
+    #                 WHERE conversation_id = %s
+    #                 LIMIT 1
+    #                 """,
+    #                 (conversation_id,),
+    #             )
+    #             result = cur.fetchone()
+    #             exists = bool(result)
+    #             return exists
+    #     except psycopg2.Error as e:
+    #         logger.error(f"Failed to check if conversation exists: {str(e)}")
+    #         raise
+    #
+    # def add_message(
+    #     self,
+    #     message_id: str,
+    #     conversation_id: str,
+    #     sender: str,
+    #     content: str | dict,
+    # ):
+    #     """"""
+    #     logger.debug(f"Adding {sender} message to database.")
+    #     try:
+    #         with self._get_connection() as conn:
+    #             cur = conn.cursor()
+    #
+    #             # Convert dict to JSON string if needed
+    #             if isinstance(content, dict):
+    #                 content = json.dumps(content)
+    #
+    #             cur.execute(
+    #                 """
+    #                 INSERT INTO agent_messages
+    #                 (message_id, conversation_id, sender, content,  created_at)
+    #                 VALUES(%s, %s, %s, %s, %s)
+    #                 """,
+    #                 (
+    #                     message_id,
+    #                     conversation_id,
+    #                     sender,
+    #                     content,
+    #                     datetime.utcnow(),
+    #                 ),
+    #             )
+    #     except psycopg2.Error as e:
+    #         logger.debug(f"Failed to add messages in the database: {e}")
+    #         raise

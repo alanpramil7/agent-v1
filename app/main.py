@@ -14,6 +14,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dependency import get_memory
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.utils.logger import logger
@@ -75,6 +76,11 @@ def create_application() -> FastAPI:
 
     # Include API routers
     application.include_router(v1_router)
+
+    @application.on_event("startup")
+    async def startup_event():
+        memory_service = get_memory()
+        await memory_service.setup_memory_table()
 
     return application
 

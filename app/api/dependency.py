@@ -11,6 +11,7 @@ from functools import lru_cache
 from app.services.agent import AgentService
 from app.services.database import DatabaseService
 from app.services.indexer import IndexerService
+from app.services.memory import MemoryService
 
 
 @lru_cache
@@ -53,5 +54,10 @@ def get_agent() -> AgentService:
         AgentService: A singleton instance of the AgentService
     """
     indexer = get_indexer()
-    database = get_database()
-    return AgentService(indexer=indexer, database=database)
+    memory = get_memory()
+    return AgentService(indexer=indexer, memory=memory)
+
+
+@lru_cache
+def get_memory() -> MemoryService:
+    return MemoryService()
