@@ -5,23 +5,27 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolM
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.managed import IsLastStep, RemainingSteps
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.store.base import BaseStore
 from langgraph.types import Checkpointer, Send
 from rich import print
-from typing_extensions import Annotated, TypedDict
 
+from app.models.agentstate import AgentState
 from app.utils.logger import logger
 
 
-class AgentState(TypedDict):
-    """State of the ReAct agent containing conversation history and step tracking."""
-
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    is_last_step: IsLastStep
-    remaining_steps: RemainingSteps
+def get_truncated_history(
+    messages: Sequence[BaseMessage], max_messages: int = 25
+) -> Sequence[BaseMessage]:
+    """Truncate the message history to the last max_messages while ensuring complete context for tool messages."""
+    if len(messages) <= max_messages:
+        return messages
+    # Start with the last max_messages
+    idx = len(messages) - max_messages
+    # Move backwards until we find an AIMessage to ensure we don't start with a ToolMessage
+    while idx > 0 and not isinstance(messages[idx], AIMessage):
+        idx -= 1
+    return messages[idx:]
 
 
 def create_react_agent(
@@ -55,7 +59,7 @@ def create_react_agent(
     # Create system message and model chain
     system_message = SystemMessage(content=prompt or "")
     model_runnable = (
-        (lambda state: [system_message] + state["messages"][-25:])
+        (lambda state: [system_message] + get_truncated_history(state["messages"], 25))
         | RunnableLambda(debug_print_messages)
         | model
     )
