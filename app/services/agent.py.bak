@@ -1,0 +1,214 @@
+"""
+Agent Service Module
+
+This module provides an agent service that processes user questions using LangChain components,
+SQL database tools, and document retrieval capabilities.
+"""
+
+import json
+from typing import AsyncGenerator
+
+from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+from langchain_community.utilities.sql_database import SQLDatabase
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import tool
+from langchain_core.tools.base import BaseTool
+
+from app.core.config import settings
+from app.services.indexer import IndexerService
+from app.services.memory import MemoryService
+from app.services.react_agent import create_react_agent
+from app.utils.logger import logger
+
+
+class AgentService:
+    """
+    Agent service for processing user questions using a combination of LLM,
+    SQL tools, and document retrieval capabilities.
+
+    This class orchestrates the interaction between different components to provide
+    accurate and helpful responses to user questions.
+    """
+
+    def __init__(
+        self,
+        indexer: IndexerService,
+        memory: MemoryService,
+    ) -> None:
+        """
+        Initialize the Agent Service with necessary components.
+
+        Args:
+            indexer (IndexerService): Service for document indexing and retrieval
+        """
+        # Initialize the language model from settings
+        self.llm = settings.llm
+        self.local_llm = settings.local_llm
+        self.indexer = indexer
+
+        # Set up SQL database connection and tools
+        self.db = SQLDatabase.from_uri(settings.database)
+        self.sql_toolkit = SQLDatabaseToolkit(db=self.db, llm=self.llm)
+        self.sql_tools = self.sql_toolkit.get_tools()
+
+        # Create document retriever tool
+        self.retriver_tool = self._create_retriver_tool()
+
+        # Combine all tools
+        self.tools = self.sql_tools + [self.retriver_tool]
+
+        # Create the agent executor
+        self.memory = memory
+
+    def _create_retriver_tool(self) -> BaseTool:
+        """
+        Create a document retrieval tool that can fetch relevant documents
+        from the vector store based on a query.
+
+        Returns:
+            BaseTool: The document retrieval tool
+        """
+
+        @tool
+        async def retrive_documents(query: str) -> str:
+            """
+            Retrieve relevant documents from the vector store based on the query.
+            Use this tool when you need to find information from documents rather than from the database.
+
+            Args:
+                query (str): The search query to find relevant documents
+
+            Returns:
+                str: Concatenated content from relevant documents
+            """
+            logger.debug(f"Retriving docs for query: {query}")
+
+            # Validate vector store existence
+            if not self.indexer.vector_store:
+                raise ValueError("Vector store is undefined.")
+
+            # Configure retriever with similarity search
+            retriver = self.indexer.vector_store.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": 5},  # Retrieve top 5 relevant documents
+            )
+
+            # Retrieve documents based on the query
+            docs = await retriver.ainvoke(query)
+
+            if not docs:
+                logger.debug("No document found.")
+                return "No documents are found."
+
+            # Log retrieved documents for debugging
+            # for i, doc in enumerate(docs):
+            #     logger.debug(f"Retrieved document {i}: {doc}")
+            if docs:
+                logger.debug(f"Documents retrived {len(docs)}")
+
+            # Format documents into a readable context string
+            context = "\n\n".join(
+                [f"Document {i + 1}:\n{doc.page_content}" for i, doc in enumerate(docs)]
+            )
+
+            return context
+
+        return retrive_documents
+
+    async def _create_agent(self):
+        """
+        Create a LangGraph agent with the configured tools and system prompt.
+
+        Returns:
+            Agent executor that can process user questions
+        """
+        system_message = """"
+            You are a helpful and knowledgeable assistant with access to SQL Database Tools and Document Retrieval Tool. Your responses must be accurate, concise, and follow the guidelines below.
+
+            ### Tool Selection and Usage
+            - **SQL Database Tools:** Use these for queries like “What is the total cost of Azure services last month?” or “How many resources are active in my Azure subscription?”
+              - **Steps:**
+                1. **List Tables:** Use `sql_db_list_tables` to see available tables.
+                2. **Check Schema:** Use `sql_db_schema` on relevant tables to verify column names and data types.
+                3. **Construct and Execute Query:** Formulate queries using the exact column names, enclose them in double quotes, and use `LIMIT 10` to avoid large results.
+                4. **Error Handling and Fallback:**
+                   - If a query returns an error or an empty result:
+                     - Log the error/reason.
+                     - Loop through a predefined list of alternative tables or modify the query (e.g., adjusting the WHERE clause) to attempt retrieving similar data.
+                     - Continue this fallback process for a couple of iterations until a result is found or all alternatives are exhausted.
+                   - Report back if no alternatives yield results.
+            - **Document Retrieval Tool:** Use for questions like “What is Azure?” or “How does cloud computing work?”
+
+            ### General Guidelines
+            - **Conciseness & Accuracy:** Provide brief, well-supported answers based solely on tool outputs.
+            - **Error Resilience:** Instead of returning a raw error message, explain the issue, attempt alternative queries, and document the fallback process.
+            - **Structured Responses:** Organize your response with clear headers or sections where necessary.
+            - **No Invented Data:** Only use verifiable outputs from the tools. If data is missing, suggest refining the query.
+            - **SQL Specifics:**
+              - Always enclose column names in double quotes (e.g., `"column_name"`).
+              - Use exact column names from the schema.
+              - Avoid using `SELECT *` unless absolutely required.
+              - Do not use any DML statements (INSERT, UPDATE, DELETE, DROP, etc.).
+
+            Follow these steps to ensure robust, error-tolerant SQL querying, and a high-quality overall response from the language model.
+        """
+
+        agent_memory = await self.memory.get_memory_saver()
+        agent = create_react_agent(
+            model=self.llm,
+            tools=self.tools,
+            prompt=system_message,
+            checkpointer=agent_memory,
+        )
+
+        return agent
+
+    async def stream_question(
+        self,
+        user_id: str,
+        conversation_id: str,
+        question: str,
+    ) -> AsyncGenerator[str, None]:
+        logger.debug(f"Streaming response for question: {question}")
+
+        if not conversation_id:
+            conversation_id = "default"
+
+        config = {"configurable": {"thread_id": conversation_id}, "recursion_limit": 25}
+
+        try:
+            agent = await self._create_agent()
+
+            messages = [("human", question)]
+
+            complete_message = ""
+
+            async for current_message, metadata in agent.astream(
+                {"messages": messages}, config, stream_mode="messages"
+            ):
+                if isinstance(current_message, ToolMessage):
+                    tool_message = {
+                        "type": "tool_message",
+                        "content": current_message.content,
+                        "tool_call_id": current_message.tool_call_id,
+                        "tool_name": current_message.name,
+                    }
+                    yield f"data: {json.dumps(tool_message)}\n\n"
+
+                if isinstance(current_message, AIMessage):
+                    if current_message.content:
+                        delta_message = {
+                            "type": "agent_message_delta",
+                            "delta": current_message.content,
+                        }
+                        complete_message += current_message.content
+                        yield f"data: {json.dumps(delta_message)}\n\n"
+                    if current_message.response_metadata.get("finish_reason") == "stop":
+                        completion_message = {"type": "agent_message_complete"}
+                        yield f"data: {json.dumps(completion_message)}\n\n"
+                        if complete_message.strip():
+                            logger.debug(complete_message)
+
+        except Exception as e:
+            logger.error(f"Error streaming question: {str(e)}")
+            yield "data: I encountered an error while processing your question.\n\n"

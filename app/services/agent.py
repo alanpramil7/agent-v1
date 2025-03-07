@@ -1,34 +1,20 @@
-"""
-Agent Service Module
-
-This module provides an agent service that processes user questions using LangChain components,
-SQL database tools, and document retrieval capabilities.
-"""
-
 import json
 from typing import AsyncGenerator
 
-from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
-from langchain_community.utilities.sql_database import SQLDatabase
 from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.tools import tool
-from langchain_core.tools.base import BaseTool
-from rich import print
 
 from app.core.config import settings
 from app.services.indexer import IndexerService
 from app.services.memory import MemoryService
-from app.services.react_agent import create_react_agent
+from app.services.retrival_agent import RetrievalAgent
+from app.services.sql_agent import SqlAgent
 from app.utils.logger import logger
 
 
 class AgentService:
     """
-    Agent service for processing user questions using a combination of LLM,
-    SQL tools, and document retrieval capabilities.
-
-    This class orchestrates the interaction between different components to provide
-    accurate and helpful responses to user questions.
+    Agent service for orchestrating multiple specialized agents to process user questions.
+    This service determines which agent to use based on the question type.
     """
 
     def __init__(
@@ -41,127 +27,54 @@ class AgentService:
 
         Args:
             indexer (IndexerService): Service for document indexing and retrieval
+            memory (MemoryService): Service for maintaining conversation context
         """
         # Initialize the language model from settings
         self.llm = settings.llm
         self.indexer = indexer
-
-        # Set up SQL database connection and tools
-        self.db = SQLDatabase.from_uri(settings.database)
-        self.sql_toolkit = SQLDatabaseToolkit(db=self.db, llm=self.llm)
-        self.sql_tools = self.sql_toolkit.get_tools()
-
-        # Create document retriever tool
-        self.retriver_tool = self._create_retriver_tool()
-
-        # Combine all tools
-        self.tools = self.sql_tools + [self.retriver_tool]
-
-        # Create the agent executor
         self.memory = memory
 
-    def _create_retriver_tool(self) -> BaseTool:
+        # Create specialized agents
+        self.doc_agent = RetrievalAgent(indexer=indexer)
+        self.sql_agent = SqlAgent()
+
+    async def _classify_query(self, query: str) -> str:
         """
-        Create a document retrieval tool that can fetch relevant documents
-        from the vector store based on a query.
+        Determine whether to use SQL or Document Retrieval.
+
+        Args:
+            query (str): The user's query to classify
 
         Returns:
-            BaseTool: The document retrieval tool
+            str: 'SQL' or 'DOCS' depending on the classification
         """
-
-        @tool
-        async def retrive_documents(query: str) -> str:
-            """
-            Retrieve relevant documents from the vector store based on the query.
-            Use this tool when you need to find information from documents rather than from the database.
-
-            Args:
-                query (str): The search query to find relevant documents
-
-            Returns:
-                str: Concatenated content from relevant documents
-            """
-            logger.debug(f"Retriving docs for query: {query}")
-
-            # Validate vector store existence
-            if not self.indexer.vector_store:
-                raise ValueError("Vector store is undefined.")
-
-            # Configure retriever with similarity search
-            retriver = self.indexer.vector_store.as_retriever(
-                search_type="similarity",
-                search_kwargs={"k": 5},  # Retrieve top 5 relevant documents
-            )
-
-            # Retrieve documents based on the query
-            docs = await retriver.ainvoke(query)
-
-            if not docs:
-                logger.debug("No document found.")
-                return "No documents are found."
-
-            # Log retrieved documents for debugging
-            # for i, doc in enumerate(docs):
-            #     logger.debug(f"Retrieved document {i}: {doc}")
-            if docs:
-                logger.debug(f"Documents retrived {len(docs)}")
-
-            # Format documents into a readable context string
-            context = "\n\n".join(
-                [f"Document {i + 1}:\n{doc.page_content}" for i, doc in enumerate(docs)]
-            )
-
-            return context
-
-        return retrive_documents
-
-    async def _create_agent(self):
-        """
-        Create a LangGraph agent with the configured tools and system prompt.
-
-        Returns:
-            Agent executor that can process user questions
-        """
-        system_message = """"
-            You are a helpful and knowledgeable assistant with access to SQL Database Tools and Document Retrieval Tool. Your responses must be accurate, concise, and follow the guidelines below.
-
-            ### Tool Selection and Usage
-            - **SQL Database Tools:** Use these for queries like “What is the total cost of Azure services last month?” or “How many resources are active in my Azure subscription?”
-              - **Steps:**
-                1. **List Tables:** Use `sql_db_list_tables` to see available tables.
-                2. **Check Schema:** Use `sql_db_schema` on relevant tables to verify column names and data types.
-                3. **Construct and Execute Query:** Formulate queries using the exact column names, enclose them in double quotes, and use `LIMIT 10` to avoid large results.
-                4. **Error Handling and Fallback:**
-                   - If a query returns an error or an empty result:
-                     - Log the error/reason.
-                     - Loop through a predefined list of alternative tables or modify the query (e.g., adjusting the WHERE clause) to attempt retrieving similar data.
-                     - Continue this fallback process for a couple of iterations until a result is found or all alternatives are exhausted.
-                   - Report back if no alternatives yield results.
-            - **Document Retrieval Tool:** Use for questions like “What is Azure?” or “How does cloud computing work?”
-
-            ### General Guidelines
-            - **Conciseness & Accuracy:** Provide brief, well-supported answers based solely on tool outputs.
-            - **Error Resilience:** Instead of returning a raw error message, explain the issue, attempt alternative queries, and document the fallback process.
-            - **Structured Responses:** Organize your response with clear headers or sections where necessary.
-            - **No Invented Data:** Only use verifiable outputs from the tools. If data is missing, suggest refining the query.
-            - **SQL Specifics:**
-              - Always enclose column names in double quotes (e.g., `"column_name"`).
-              - Use exact column names from the schema.
-              - Avoid using `SELECT *` unless absolutely required.
-              - Do not use any DML statements (INSERT, UPDATE, DELETE, DROP, etc.).
-
-            Follow these steps to ensure robust, error-tolerant SQL querying, and a high-quality overall response from the language model.
-        """
-
-        agent_memory = await self.memory.get_memory_saver()
-        agent = create_react_agent(
-            model=self.llm,
-            tools=self.tools,
-            prompt=system_message,
-            checkpointer=agent_memory,
+        prompt = (
+            f"Analyze this query: '{query}'\n\n"
+            f"If it requires database access (specific data, calculations, statistics, "
+            f"or any information that would be stored in a database related to "
+            f"Azure cloud data like costs or resource usage), respond with 'SQL'.\n"
+            f"If it requires information from documents (explanations, concepts, "
+            f"processes, general knowledge), respond with 'DOCS'.\n\n"
+            f"Response (SQL or DOCS only):"
         )
 
-        return agent
+        response = await self.llm.ainvoke(prompt)
+        return "SQL" if "SQL" in response.content.upper() else "DOCS"
+
+    async def _get_agent_for_type(self, agent_type: str):
+        """
+        Return the appropriate agent based on classification.
+
+        Args:
+            agent_type (str): 'SQL' or 'DOCS'
+
+        Returns:
+            An initialized agent ready to process the query
+        """
+        if agent_type == "SQL":
+            return await self.sql_agent.create_sql_agent(self.memory)
+        else:
+            return await self.doc_agent.create_retrieval_agent(self.memory)
 
     async def stream_question(
         self,
@@ -169,23 +82,50 @@ class AgentService:
         conversation_id: str,
         question: str,
     ) -> AsyncGenerator[str, None]:
-        logger.debug(f"Streaming response for question: {question}")
+        """
+        Process a user question and stream the response from the appropriate agent.
+
+        Args:
+            user_id (str): The ID of the user asking the question
+            conversation_id (str): The ID of the current conversation
+            question (str): The user's question to be answered
+
+        Yields:
+            str: JSON-formatted chunks of the response
+        """
+        logger.debug(f"Processing question: {question}")
 
         if not conversation_id:
             conversation_id = "default"
 
-        config = {"configurable": {"thread_id": conversation_id}, "recursion_limit": 25}
-
         try:
-            agent = await self._create_agent()
+            # Determine agent type
+            agent_type = await self._classify_query(question)
+            logger.info(f"Selected agent type: {agent_type} for query: {question}")
 
+            # Provide feedback on which agent is being used
+            # routing_message = {
+            #     "type": "agent_message_delta",
+            #     "delta": f"Based on your question, I'll {'use the database' if agent_type == 'SQL' else 'search relevant documents'} to find an answer.\n\n",
+            # }
+            # yield f"data: {json.dumps(routing_message)}\n\n"
+
+            # Get the appropriate agent
+            agent = await self._get_agent_for_type(agent_type)
+
+            # Stream the agent's response
+            config = {
+                "configurable": {"thread_id": conversation_id},
+                "recursion_limit": 25,
+            }
             messages = [("human", question)]
-
             complete_message = ""
 
             async for current_message, metadata in agent.astream(
                 {"messages": messages}, config, stream_mode="messages"
             ):
+                # print(current_message)
+                # Handle tool messages (showing intermediate reasoning)
                 if isinstance(current_message, ToolMessage):
                     tool_message = {
                         "type": "tool_message",
@@ -195,20 +135,30 @@ class AgentService:
                     }
                     yield f"data: {json.dumps(tool_message)}\n\n"
 
-                if isinstance(current_message, AIMessage):
-                    if current_message.content:
-                        delta_message = {
-                            "type": "agent_message_delta",
-                            "delta": current_message.content,
-                        }
-                        complete_message += current_message.content
-                        yield f"data: {json.dumps(delta_message)}\n\n"
-                    if current_message.response_metadata.get("finish_reason") == "stop":
+                # Handle AI messages (the actual response)
+                if isinstance(current_message, AIMessage) and current_message.content:
+                    delta_message = {
+                        "type": "agent_message_delta",
+                        "delta": current_message.content,
+                    }
+                    complete_message += current_message.content
+                    yield f"data: {json.dumps(delta_message)}\n\n"
+
+                    # Signal completion
+                    if (
+                        current_message.response_metadata
+                        and current_message.response_metadata.get("finish_reason")
+                        == "stop"
+                    ):
                         completion_message = {"type": "agent_message_complete"}
                         yield f"data: {json.dumps(completion_message)}\n\n"
                         if complete_message.strip():
-                            logger.debug(complete_message)
+                            logger.debug(f"Complete response: {complete_message}")
 
         except Exception as e:
-            logger.error(f"Error streaming question: {str(e)}")
-            yield "data: I encountered an error while processing your question.\n\n"
+            logger.error(f"Error processing question: {str(e)}")
+            error_message = {
+                "type": "agent_message_delta",
+                "delta": f"I encountered an error while processing your question: {str(e)}",
+            }
+            yield f"data: {json.dumps(error_message)}\n\n"

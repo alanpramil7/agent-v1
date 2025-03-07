@@ -52,7 +52,7 @@ def create_react_agent(
                 f"Model call {current_model_call} with message count {len(messages)}",
                 "*" * 20,
             )
-            # print(messages)
+            print(messages)
         current_model_call += 1
         return messages
 
