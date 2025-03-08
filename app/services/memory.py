@@ -54,6 +54,7 @@ class MemoryService:
         pool = await self.get_pool()
         # Get a connection from the pool but don't close it after the block
         # because AsyncPostgresSaver needs to keep it
+        logger.debug("Getting connection...")
         conn = await pool.getconn()
 
         # Create the memory saver with the connection
@@ -69,8 +70,11 @@ class MemoryService:
         Setup postgres tables for checkpoint
         This should be called only once during application setup
         """
-        pool = await self.get_pool()
-        async with pool.connection() as conn:
-            memory = AsyncPostgresSaver(conn)
-            await memory.setup()
-            logger.debug("Postgres tables for agent memory has been setup.")
+        try:
+            pool = await self.get_pool()
+            async with pool.connection() as conn:
+                memory = AsyncPostgresSaver(conn)
+                await memory.setup()
+                logger.debug("Postgres tables for agent memory has been setup.")
+        except Exception as e:
+            logger.error(f"Error connecting to the database: {e}")
