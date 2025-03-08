@@ -1,5 +1,5 @@
 import json
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict, List
 
 from langchain_core.messages import AIMessage, ToolMessage
 
@@ -38,26 +38,27 @@ class AgentService:
         self.doc_agent = RetrievalAgent(indexer=indexer)
         self.sql_agent = SqlAgent()
 
-    async def _classify_query(self, query: str) -> str:
+    async def _classify_query(
+        self, query: str, history: List[Dict[str, str]] = None
+    ) -> str:
         """
-        Determine whether to use SQL or Document Retrieval.
+        Determine whether to use SQL or Document Retrieval based on the conversation history and query.
 
         Args:
-            query (str): The user's query to classify
+            query (str): The user's query to classify.
+            history (List[Dict[str, str]], optional): The conversation history (each dict with 'role' and 'content').
 
         Returns:
-            str: 'SQL' or 'DOCS' depending on the classification
+            str: 'SQL' or 'DOCS' depending on the classification.
         """
         prompt = (
-            f"Analyze this query: '{query}'\n\n"
-            f"If it requires database access (specific data, calculations, statistics, "
-            f"or any information that would be stored in a database related to "
-            f"Azure cloud data like costs or resource usage), respond with 'SQL'.\n"
-            f"If it requires information from documents (explanations, concepts, "
-            f"processes, general knowledge), respond with 'DOCS'.\n\n"
-            f"Response (SQL or DOCS only):"
+            f"In need to find the indent of this question {query}"
+            f"Always use SQL whe the question is about optimizing the cloud cost."
+            "If the query requires database access such as retrieving, calculating, or analyzing data (for example, costs, "
+            "resource usage, or statistical analysis), respond with 'SQL'.\n"
+            "If the query requires information from documents (explanations, conceptual knowledge, etc.), respond with 'DOCS'.\n"
+            "Response (SQL or DOCS only):"
         )
-
         response = await self.llm.ainvoke(prompt)
         return "SQL" if "SQL" in response.content.upper() else "DOCS"
 
@@ -100,7 +101,9 @@ class AgentService:
 
         try:
             # Determine agent type
-            agent_type = await self._classify_query(question)
+            history = await self.memory.get_conversation_history(conversation_id)
+            history = self.extract_all_messages(history)
+            agent_type = await self._classify_query(question, history)
             logger.info(f"Selected agent type: {agent_type} for query: {question}")
 
             # Provide feedback on which agent is being used
@@ -162,3 +165,39 @@ class AgentService:
                 "delta": f"I encountered an error while processing your question: {str(e)}",
             }
             yield f"data: {json.dumps(error_message)}\n\n"
+
+    def extract_all_messages(self, history: List[Dict]) -> List[Dict[str, str]]:
+        """
+        Process the raw conversation history and extract all human and AI messages,
+        preserving their chronological order.
+
+        Returns:
+            List[Dict[str, str]]: A list of dictionaries with keys "role" and "content".
+        """
+        messages = []
+        for checkpoint in history:
+            metadata = checkpoint.get("metadata") or {}
+            source = metadata.get("source", "")
+            writes = metadata.get("writes") or {}
+
+            if source == "input":
+                # Extract human messages from checkpoints with source "input"
+                start_writes = writes.get("__start__") or {}
+                msg_list = start_writes.get("messages") or []
+                for item in msg_list:
+                    # Expecting each item to be a list like: [role, content]
+                    if isinstance(item, list) and len(item) >= 2:
+                        role, content = item[0], item[1]
+                        if isinstance(role, str) and role.lower() == "human":
+                            messages.append({"role": "human", "content": content})
+            elif source == "loop":
+                # Extract AI messages from checkpoints with source "loop"
+                agent_writes = writes.get("agent") or {}
+                msg_list = agent_writes.get("messages") or []
+                for msg in msg_list:
+                    if isinstance(msg, dict):
+                        kwargs = msg.get("kwargs") or {}
+                        content = kwargs.get("content")
+                        if content:
+                            messages.append({"role": "ai", "content": content})
+        return messages

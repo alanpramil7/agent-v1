@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -78,3 +80,41 @@ class MemoryService:
                 logger.debug("Postgres tables for agent memory has been setup.")
         except Exception as e:
             logger.error(f"Error connecting to the database: {e}")
+
+    async def get_conversation_history(self, thread_id: str) -> List[Dict]:
+        """
+        Retrieve the conversation history (checkpoints) for a given thread_id.
+
+        Args:
+            thread_id (str): The unique identifier for the conversation/thread.
+
+        Returns:
+            List[Dict]: A list of dictionaries representing each checkpoint entry
+                        in the conversation, ordered by the 'step' field from metadata.
+        """
+        try:
+            pool = await self.get_pool()
+            async with pool.connection() as conn:
+                query = """
+                    SELECT thread_id,
+                           checkpoint_ns,
+                           checkpoint_id,
+                           parent_checkpoint_id,
+                           type,
+                           checkpoint,
+                           metadata
+                    FROM checkpoints
+                    WHERE thread_id = %s
+                    ORDER BY (metadata->>'step')::int ASC;
+                """
+                # Create a cursor to execute the query.
+                async with conn.cursor() as cur:
+                    await cur.execute(query, (thread_id,))
+                    rows = await cur.fetchall()
+                    logger.debug(
+                        "Fetched conversation history for thread_id: %s", thread_id
+                    )
+                    return rows
+        except Exception as e:
+            logger.error("Error fetching conversation history", exc_info=e)
+            raise

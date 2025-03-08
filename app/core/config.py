@@ -62,8 +62,6 @@ class Settings(BaseSettings):
     azure_embedding_endpoint: str
     embedding_api_version: str
 
-    groq_api_key: str
-
     # Database connection string
     database: str
 
