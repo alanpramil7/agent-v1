@@ -54,7 +54,7 @@ class AgentService:
         prompt = (
             f"You are question classifier agent, Your main task is to classify user question as `SQL` or `DOCS` accoridng to thier intent."
             f"Determine the appropriate response type based on the query: {query}\n"
-            "If the query is about optimizing cloud costs, always use 'SQL'.\n"
+            "If the query is about optimizing cloud costs, providing recommendations on cloud usage always use 'SQL'.\n"
             "If the query requires database access, such as retrieving, calculating, or analyzing data (e.g., costs, resource usage, or statistical analysis), respond with 'SQL'.\n"
             "Always return 'SQL' if the query involves analysis of cloud cost and calculations of cloud cost.\n"
             "If the query is related to Amadis or Cloudcadi, respond with 'DOCS'.\n"
