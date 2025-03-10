@@ -52,10 +52,11 @@ class AgentService:
             str: 'SQL' or 'DOCS' depending on the classification.
         """
         prompt = (
+            f"You are question classifier agent, Your main task is to classify user question as `SQL` or `DOCS` accoridng to thier intent."
             f"Determine the appropriate response type based on the query: {query}\n"
             "If the query is about optimizing cloud costs, always use 'SQL'.\n"
             "If the query requires database access, such as retrieving, calculating, or analyzing data (e.g., costs, resource usage, or statistical analysis), respond with 'SQL'.\n"
-            "Always return 'SQL' if the query involves calculations and requires data from a database.\n"
+            "Always return 'SQL' if the query involves analysis of cloud cost and calculations of cloud cost.\n"
             "If the query is related to Amadis or Cloudcadi, respond with 'DOCS'.\n"
             "If the query requires conceptual knowledge, explanations, or information from documents, respond with 'DOCS'.\n"
             "Response (SQL or DOCS only):"
@@ -108,11 +109,11 @@ class AgentService:
             logger.info(f"Selected agent type: {agent_type} for query: {question}")
 
             # Provide feedback on which agent is being used
-            # routing_message = {
-            #     "type": "agent_message_delta",
-            #     "delta": f"Based on your question, I'll {'use the database' if agent_type == 'SQL' else 'search relevant documents'} to find an answer.\n\n",
-            # }
-            # yield f"data: {json.dumps(routing_message)}\n\n"
+            routing_message = {
+                "type": "routing_message",
+                "delta": f"Based on your question, I'll {'use the database' if agent_type == 'SQL' else 'search relevant documents'} to find an answer.\n\n",
+            }
+            yield f"data: {json.dumps(routing_message)}\n\n"
 
             # Get the appropriate agent
             agent = await self._get_agent_for_type(agent_type)
