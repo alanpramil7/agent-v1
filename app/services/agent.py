@@ -39,24 +39,25 @@ class AgentService:
         self.sql_agent = SqlAgent()
 
     async def _classify_query(
-        self, query: str, history: List[Dict[str, str]] = None
+        self,
+        query: str,
     ) -> str:
         """
-        Determine whether to use SQL or Document Retrieval based on the conversation history and query.
+        Determine whether to use SQL or Document Retrieval based on the query
 
         Args:
             query (str): The user's query to classify.
-            history (List[Dict[str, str]], optional): The conversation history (each dict with 'role' and 'content').
 
         Returns:
             str: 'SQL' or 'DOCS' depending on the classification.
         """
         prompt = (
-            f"In need to find the indent of this question {query}"
-            f"Always use SQL whe the question is about optimizing the cloud cost."
-            "If the query requires database access such as retrieving, calculating, or analyzing data (for example, costs, "
-            "resource usage, or statistical analysis), respond with 'SQL'.\n"
-            "If the query requires information from documents (explanations, conceptual knowledge, etc.), respond with 'DOCS'.\n"
+            f"Determine the appropriate response type based on the query: {query}\n"
+            "If the query is about optimizing cloud costs, always use 'SQL'.\n"
+            "If the query requires database access, such as retrieving, calculating, or analyzing data (e.g., costs, resource usage, or statistical analysis), respond with 'SQL'.\n"
+            "Always return 'SQL' if the query involves calculations and requires data from a database.\n"
+            "If the query is related to Amadis or Cloudcadi, respond with 'DOCS'.\n"
+            "If the query requires conceptual knowledge, explanations, or information from documents, respond with 'DOCS'.\n"
             "Response (SQL or DOCS only):"
         )
         response = await self.llm.ainvoke(prompt)
@@ -101,9 +102,9 @@ class AgentService:
 
         try:
             # Determine agent type
-            history = await self.memory.get_conversation_history(conversation_id)
-            history = self.extract_all_messages(history)
-            agent_type = await self._classify_query(question, history)
+            # history = await self.memory.get_conversation_history(conversation_id)
+            # history = self.extract_all_messages(history)
+            agent_type = await self._classify_query(question)
             logger.info(f"Selected agent type: {agent_type} for query: {question}")
 
             # Provide feedback on which agent is being used

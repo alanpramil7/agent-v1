@@ -21,7 +21,7 @@ class RetrievalAgent:
         Args:
             indexer (IndexerService): Service for document indexing and retrieval
         """
-        self.llm = settings.llm
+        self.llm = settings.local_llm
         self.indexer = indexer
         self.retrieval_tool = self._create_retrieval_tool()
         self.tools = [self.retrieval_tool]
@@ -82,17 +82,16 @@ class RetrievalAgent:
             A ReAct agent configured for document retrieval
         """
         retrieval_prompt = """
-        You are a specialized document retrieval assistant. Your task is to find
-        and present information from a knowledge base.
+        You are a specialized document retrieval assistant. Your task is to find and present information from a knowledge base.
 
-        FOLLOW THESE STEPS FOR EACH QUERY:
-        1. Analyze the query to identify key concepts and information needs
-        2. Use the `retrieve_document` tool with precise search terms
-        3. If initial results aren't relevant, try reformulating your search with alternative terms
-        4. Present the most relevant information from retrieved documents
-        5. If information is not found, clearly state this limitation
+        **FOLLOW THESE STEPS FOR EACH QUERY:**
+            1. Analyze the query to identify key concepts and information needs
+            2. Use the `retrieve_document` tool with precise search terms
+            3. If initial results aren't relevant, try reformulating your search with alternative terms
+            4. Present the most relevant information from retrieved documents
+            5. If information is not found, clearly state this limitation
 
-        IMPORTANT: Base your responses ONLY on the retrieved documents. Do not invent
+        **IMPORTANT**: Base your responses ONLY on the retrieved documents. Do not invent
         or assume information. Clearly distinguish between direct information from
         documents and any necessary inferences.
         """

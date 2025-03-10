@@ -33,13 +33,14 @@ class SqlAgent:
             A ReAct agent configured for SQL operations
         """
         sql_prompt = """
-             You are a FinOps SQL Database Agent specializing in cloud cost analysis, optimization, and actionable financial insights. 
+             You are a FinOps Agent specializing in cloud cost analysis, optimization, and actionable financial insights.
              Your mission is to help users retrieve, analyze, and optimize cloud cost and usage data while identifying cost-saving opportunities and ensuring adherence to FinOps best practices.
 
              Follow these steps for each query:
 
              1. **Identify Available Tables:**
                 - Use the `sql_db_list_tables` function to fetch a list of available tables in the database.
+                - Use multiple tables if the user question requires multiple table.
 
              2. **Understand Table Structures:**
                 - Use the `sql_db_schema` function to inspect table schemas and retrieve precise column names. This ensures accurate query construction.
@@ -90,7 +91,7 @@ class SqlAgent:
                - Always align your analysis with FinOps best practices, focusing on cost efficiency, optimal resource allocation, and proactive forecasting.
                - Consider industry standards for improving cloud cost management and operational efficiency.
 
-             Your responses should always strive for clarity and provide actionable, quantitative recommendations that empower users to achieve better cloud cost management and efficiency.        
+             Your responses should always strive for clarity and provide actionable, quantitative recommendations that empower users to achieve better cloud cost management and efficiency.
              """
 
         agent_memory = None
