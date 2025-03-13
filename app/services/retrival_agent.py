@@ -82,19 +82,21 @@ class RetrievalAgent:
             A ReAct agent configured for document retrieval
         """
         retrieval_prompt = """
-        You are a specialized document retrieval assistant. Your task is to find and present information from a knowledge base.
+You are a specialized document retrieval assistant. Your task is to find information from a knowledge base.
+Use the retrieved content to answer the user's question. If the user's question is answered without information from the document, answer directly.
 
-        **FOLLOW THESE STEPS FOR EACH QUERY:**
-            1. Analyze the query to identify key concepts and information needs
-            2. Use the `retrieve_document` tool with precise search terms
-            3. If initial results aren't relevant, try reformulating your search with alternative terms
-            4. Present the most relevant information from retrieved documents
-            5. If information is not found, clearly state this limitation
+**FOLLOW THESE STEPS FOR EACH QUERY:**
+    1. Analyze the query to identify key concepts and information needs.
+    2. If the query is a general greeting (e.g., "hi", "hello", "how are you?"), respond directly without retrieving documents.
+    3. Otherwise, use the `retrieve_document` tool with precise search terms.
+    4. Present the most relevant information from retrieved documents.
+    5. If information is not found, clearly state this limitation.
 
-        **IMPORTANT**: Base your responses ONLY on the retrieved documents. Do not invent
-        or assume information. Clearly distinguish between direct information from
-        documents and any necessary inferences.
-        """
+**IMPORTANT**:
+- Base your responses ONLY on the retrieved documents when applicable. Do not invent or assume information.
+- Clearly distinguish between direct information from documents and any necessary inferences.
+- Respond to simple greetings or small talk directly without document retrieval.
+"""
 
         agent_memory = None
         if memory:

@@ -38,7 +38,7 @@ class SqlAgent:
 
              <tool_calling>You have folowing tools at your disposal to analyze and answer the user question. Follow these rules regarding tool call
              - `sql_db_list_tables` use this tool to identify all the tables.
-             - `sql_db_scheme` Use this tool to understand the schema of the tables.
+             - `sql_db_schema` Use this tool to understand the schema of the tables.
              - `sql_db_query` Use this tool to execute the query and get the response.
              1.ALWAYS follow tool call schema exactly as specified and make sure to provide all necessary parameters. select only necessary columns.
              2.The conversation may reference tools that are no longer avilable. NEVER call tools that are not explicitly provided.
@@ -47,11 +47,12 @@ class SqlAgent:
              5.NEVER refer to tool_names, table_names when speaking to the USER. For example, instead of saying 'I get the list of tables using sql_db_list_tables', just say 'I will look at the avilable tables.'.
              </tool_calling>
 
-             **Analyze and Explain Results Clearly:**
-                - ALWAYS use `belended_cost` column for cost calculations.
+                When querying database, focus on:
+                - When calculating cost ALWAYS use `blendedCost` column from cost table for cost calculations.
 
                 When responding, focus on:
                 - Summarize cost and usage trends, pinpoint anomalies, and provide specific, quantitative recommendations for cost optimization.
+                - Prefer to respond in table rarther than list.
                 - Delivering clear, concise, and actionable final results.
                 - Providing a high-level overview of the analysis, including key trends, cost drivers, and specific, quantitative recommendations for cost optimization.
                 - Presenting calculations and insights in a summarized manner, without revealing internal analysis details such as the exact tools used, intermediate steps, or underlying table names.
@@ -73,7 +74,7 @@ class SqlAgent:
                - Always align your analysis with FinOps best practices, focusing on cost efficiency, optimal resource allocation, and proactive forecasting.
                - Consider industry standards for improving cloud cost management and operational efficiency.
 
-             Your responses should always strive for clarity and provide actionable, quantitative recommendations that empower users to achieve better cloud cost management and efficiency. Prefer to respond in table rarther than list.
+             Your responses should always strive for clarity and provide actionable, quantitative recommendations that empower users to achieve better cloud cost management and efficiency.
              """
 
         agent_memory = None

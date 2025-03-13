@@ -28,6 +28,23 @@ def get_truncated_history(
     return messages[idx:]
 
 
+async def summarize_messages(
+    model: Union[str, LanguageModelLike], conversation: Sequence[BaseMessage]
+):
+    """"""
+    summary_propt = (
+        "You are an expert in summarizing conversations. Given the history of interactions between the user and the FinOps agent,"
+        "generate a concise yet comprehensive summary covering key discussion points, tool calls, and any other critical details."
+        "Ensure the summary is brief but captures all essential information."
+        f"\n\n{conversation}"
+    )
+
+    system_message = SystemMessage(content=summary_propt or "")
+    model_runnable = (lambda state: [system_message]) | model
+    summary = await model_runnable.ainvoke(conversation)
+    print(f"********\n\n\n{summary}\n\n\n*********")
+
+
 def create_react_agent(
     model: Union[str, LanguageModelLike],
     tools: Sequence[BaseTool],
@@ -52,7 +69,7 @@ def create_react_agent(
                 f"Model call {current_model_call} with message count {len(messages)}",
                 "*" * 20,
             )
-            print(messages)
+            # print(messages)
         current_model_call += 1
         return messages
 
@@ -65,8 +82,20 @@ def create_react_agent(
     )
 
     async def call_model(state: AgentState, config: RunnableConfig) -> AgentState:
+        # Limit the conversation to only 25 messages.
+        # last_message = state["messages"][-1] if state["messages"] else None
+        # is_max_coversation_reached = not isinstance(last_message, ToolMessage)
+        #
+        # if len(state["messages"]) > 10 and is_max_coversation_reached:
+        #     raise ValueError(
+        #         "Conversation hsitory reached maximum limit. Create a new conversation."
+        #     )
+
         response = cast(AIMessage, await model_runnable.ainvoke(state, config))
         logger.debug(f"Remaining steps :{state['remaining_steps']}")
+
+        # if len(state["messages"]) > 10:
+        #     await summarize_messages(model, state["messages"])
 
         # Check if we need to stop due to step limitations
         has_tool_calls = isinstance(response, AIMessage) and response.tool_calls

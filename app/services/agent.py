@@ -1,4 +1,5 @@
 import json
+from rich import print
 from typing import AsyncGenerator, Dict, List
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -30,7 +31,7 @@ class AgentService:
             memory (MemoryService): Service for maintaining conversation context
         """
         # Initialize the language model from settings
-        self.llm = settings.llm
+        self.llm = settings.local_llm
         self.indexer = indexer
         self.memory = memory
 
@@ -163,7 +164,7 @@ class AgentService:
         except Exception as e:
             logger.error(f"Error processing question: {str(e)}")
             error_message = {
-                "type": "agent_message_delta",
+                "type": "error_message",
                 "delta": f"I encountered an error while processing your question: {str(e)}",
             }
             yield f"data: {json.dumps(error_message)}\n\n"
