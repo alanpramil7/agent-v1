@@ -49,6 +49,7 @@ class SqlAgent:
 
                 When querying database, focus on:
                 - When calculating cost ALWAYS use `blendedCost` column from cost table for cost calculations.
+                - When querying databse don't consider dates untill and unless user give a specific date.
 
                 When responding, focus on:
                 - Summarize cost and usage trends, pinpoint anomalies, and provide specific, quantitative recommendations for cost optimization.

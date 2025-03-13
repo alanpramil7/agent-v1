@@ -59,18 +59,10 @@ def create_react_agent(
     tool_calling_enabled = bool(tools)
     model = model.bind_tools(tools)
 
-    current_model_call = 1
-
     def debug_print_messages(messages):
-        nonlocal current_model_call
         if messages:
-            print(
-                "*" * 20,
-                f"Model call {current_model_call} with message count {len(messages)}",
-                "*" * 20,
-            )
+            logger.debug(f"Calling model with {len(messages)} messages.")
             # print(messages)
-        current_model_call += 1
         return messages
 
     # Create system message and model chain
@@ -130,11 +122,14 @@ def create_react_agent(
     def should_continue(state: AgentState) -> Union[str, list]:
         last_message = state["messages"][-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+            logger.debug("No further tool calls. Ending....")
             return END
         tool_calls = [
             tool_node.inject_tool_args(call, state, store)
             for call in last_message.tool_calls
         ]
+        for tool_call in last_message.tool_calls:
+            logger.debug(f"Calling tool : {tool_call}")
         return [Send("tools", [tool_call]) for tool_call in tool_calls]
 
     workflow.add_conditional_edges(

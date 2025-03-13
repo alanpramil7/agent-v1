@@ -9,5 +9,6 @@ class AgentState(TypedDict):
     """State of the ReAct agent containing conversation history and step tracking."""
 
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    next: str
     is_last_step: IsLastStep
     remaining_steps: RemainingSteps
