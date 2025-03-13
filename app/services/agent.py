@@ -193,9 +193,11 @@ Based on the conversation, who should act next? Or should we FINISH? Select one 
             initial_state = {"messages": [HumanMessage(content=question)]}
 
             async for event in self.graph.astream(
-                initial_state, config, stream_mode="updates"
+                initial_state,
+                config,
+                stream_mode="updates",
+                debug=True,
             ):
-                print(event)
                 for node, updates in event.items():
                     if node == "supervisor" and "next" in updates:
                         next_agent = updates["next"]
