@@ -38,7 +38,7 @@ class MemoryService:
             )
 
             try:
-                # Explicitly open the pool, as opening in the constructor is deprecated.
+                # Explicitly open the pool
                 await self._pool.open()
                 logger.debug("Connection pool successfully opened.")
             except Exception as e:

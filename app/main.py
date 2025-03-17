@@ -3,12 +3,10 @@ FastAPI Application Entry Point
 
 This module initializes and configures the FastAPI application, including middleware,
 routes, and core services. It serves as the main entry point for the application.
-
-Environment variables for LangSmith are configured here but should be moved to
-a proper environment file or secret management system in production.
 """
 
 import os
+from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
@@ -27,20 +25,29 @@ os.environ["LANGSMITH_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGSMITH_PROJECT"] = "sql-agent"
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.debug("Initializing lifespan.")
+    memory_service = get_memory()
+    await memory_service.setup_memory_table()
+    agent = get_agent()
+    await agent.ainit()
+
+    yield
+
+
 def create_application() -> FastAPI:
     """
     Create and configure the FastAPI application.
 
-    Sets up CORS middleware, registers health check endpoint, initializes services,
-    and includes API routers.
-
     Returns:
         FastAPI: Configured FastAPI application instance
     """
-    logger.debug(f"Creating FastAPI application with name: {settings.app_name}")
+    logger.debug(f"Creating FastAPI application with : {settings.app_name}")
     application = FastAPI(
         title=settings.app_name,
         description=settings.app_description,
+        lifespan=lifespan,
         version=settings.version,
         docs_url="/docs",
     )
@@ -77,12 +84,7 @@ def create_application() -> FastAPI:
     # Include API routers
     application.include_router(v1_router)
 
-    @application.on_event("startup")
-    async def startup_event():
-        memory_service = get_memory()
-        await memory_service.setup_memory_table()
-        agent = get_agent()
-        await agent.ainit()
+    logger.debug(f"Created FastAPI application with : {settings.app_name}")
 
     return application
 
@@ -93,12 +95,10 @@ app = create_application()
 if __name__ == "__main__":
     """
     Run the application using Uvicorn server when executed directly.
-    Note: In production, use a proper ASGI server configuration instead of
-    running directly with reload=True.
     """
     uvicorn.run(
         app=app,
         host=settings.host,
         port=settings.port,
-        reload=True,  # Set to False in production
+        reload=True,
     )

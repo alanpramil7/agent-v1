@@ -19,13 +19,11 @@ class WikiProcessingRequest(BaseModel):
     """
 
     organization: str = Field(
-        default="cloudcadi", description="Organization name containing the wiki"
+        default="", description="Organization name containing the wiki"
     )
-    project: str = Field(
-        default="azure-cloudcadi-v2", description="Project name containing the wiki"
-    )
+    project: str = Field(default="", description="Project name containing the wiki")
     wikiIdentifier: str = Field(
-        default="azure-cloudcadi-v2.wiki", description="Unique identifier for the wiki"
+        default="", description="Unique identifier for the wiki"
     )
 
     class Config:

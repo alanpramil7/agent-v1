@@ -66,8 +66,6 @@ class Settings(BaseSettings):
     # Database connection string
     database: str
 
-    groq_api_key: str
-
     @property
     def llm(self) -> AzureChatOpenAI:
         """
@@ -94,14 +92,6 @@ class Settings(BaseSettings):
             # model="mistral",
             # model="MFDoom/deepseek-r1-tool-calling:7b",
             temparature=0,
-        )
-
-    @property
-    def groq_llm(self) -> ChatGroq:
-        """"""
-        return ChatGroq(
-            model="deepseek-r1-distill-llama-70b",
-            api_key=self.groq_api_key,
         )
 
     # Configure Pydantic to load environment variables from .env file

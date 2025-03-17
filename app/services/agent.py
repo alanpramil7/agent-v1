@@ -10,7 +10,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
-from rich import print
 
 from app.core.config import settings
 from app.models.agentstate import AgentState
@@ -129,8 +128,9 @@ Based on the conversation, who should act next? Or should we FINISH? Select one 
             """Invoke an agent and update the state with its response."""
             logger.debug(f"Calling agent node with agent: {name}")
             result = await agent.ainvoke({"messages": state["messages"]})
-            last_message = result["messages"][-1]
-            return {"messages": [AIMessage(content=last_message.content, name=name)]}
+            # last_message = result["messages"][-1]
+            # return {"messages": [AIMessage(content=last_message.content, name=name)]}
+            return {"messages": result["messages"]}
 
         doc_agent_instance = await self.doc_agent.create_retrieval_agent(self.memory)
         sql_agent_instance = await self.sql_agent.create_sql_agent(self.memory)

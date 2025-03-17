@@ -26,6 +26,8 @@ class AgentProcessingRequest(BaseModel):
 
         json_schema_extra = {
             "example": {
-                "question": "What are the key features of Azure Virtual Machines?"
+                "user_id": "default",
+                "conversation_id": "default",
+                "question": "What are the key features of Azure Virtual Machines?",
             }
         }

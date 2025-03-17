@@ -70,7 +70,7 @@ class SqlAgent:
 
              - **Performance Considerations:**
                - Optimize queries to reduce data scan size by leveraging appropriate filters, indexes, and efficient querying techniques.
-               - Always use LIMIT statement in the query (LIMIT 10).
+               - Use LIMIT statement whenever necessary(Don't use `SELECT *` in querries).
 
              - **Cloud and Financial Context Awareness:**
                - Always align your analysis with FinOps best practices, focusing on cost efficiency, optimal resource allocation, and proactive forecasting.
