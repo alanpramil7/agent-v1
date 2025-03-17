@@ -24,16 +24,6 @@ from app.utils.logger import logger
 class DocumentService:
     """
     Service for processing and indexing document files.
-
-    This service handles the complete lifecycle of document processing:
-    - Loading document files and extracting text
-    - Validating file formats
-    - Splitting documents into chunks
-    - Adding document chunks to the vector store
-    - Recording processed documents in the database
-
-    It works with the IndexerService for vector operations and
-    DatabaseService for tracking processed documents.
     """
 
     def __init__(self, indexer: IndexerService, database: DatabaseService):
@@ -132,7 +122,7 @@ class DocumentService:
 
             # Add chunks to vector store
             logger.debug("Adding chunks to vector store")
-            self.indexer.vector_store.add_documents(chunks)
+            await self.indexer.vector_store.aadd_documents(chunks)
             logger.debug("Successfully added chunks to vector store")
 
             # Record document in database
@@ -144,10 +134,6 @@ class DocumentService:
                 "file_name": Path(file_path).name,
                 "chunks": len(chunks),
             }
-
-        except HTTPException:
-            # Re-raise HTTPExceptions without wrapping
-            raise
 
         except Exception as e:
             logger.error(f"Error processing document {file_path.name}: {str(e)}")

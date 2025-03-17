@@ -19,46 +19,6 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 
 
 @router.post(
-    "",
-    summary="Process a question with the agent",
-    description="Submit a question to be processed by the AI agent and receive a complete response",
-)
-async def agent(
-    request: AgentProcessingRequest,
-    agent: AgentService = Depends(get_agent),
-):
-    """
-    Process a question using the AI agent.
-
-    This endpoint accepts a question from the client, processes it using
-    the AI agent, and returns the complete response.
-
-    Args:
-        request: The agent processing request containing the question
-        agent: AgentService dependency for processing the question
-
-    Returns:
-        dict: The agent's response to the question
-
-    Raises:
-        HTTPException: If processing encounters an error
-    """
-    logger.debug(f"Generating response for user question: {request.question}")
-    try:
-        # Process the question using the agent service
-        response = await agent.process_question(request.question)
-        logger.info(f"Successfully processed question: {request.question[:50]}...")
-        return response
-
-    except Exception as e:
-        logger.error(f"Error in processing user question: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing user request: {str(e)}",
-        )
-
-
-@router.post(
     "/stream",
     summary="Stream a response from the agent",
     description="Submit a question to be processed by the AI agent and receive a streaming response",
@@ -83,12 +43,10 @@ async def stream_agent(
     Raises:
         HTTPException: If processing encounters an error
     """
-    logger.debug(f"Streaming response for user question: {request.question}")
     try:
         # Return a streaming response
         return StreamingResponse(
             agent.stream_question(
-                request.user_id,
                 request.conversation_id,
                 request.question,
             ),

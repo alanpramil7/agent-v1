@@ -8,10 +8,8 @@ for later retrieval and querying.
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.api.dependency import get_database, get_indexer
-from app.services.database import DatabaseService
+from app.api.dependency import get_document
 from app.services.document import DocumentService
-from app.services.indexer import IndexerService
 from app.utils.logger import logger
 
 # Document-specific router with appropriate tags and prefix
@@ -28,8 +26,7 @@ router = APIRouter(
 )
 async def process_document(
     file: UploadFile = File(...),
-    indexer: IndexerService = Depends(get_indexer),
-    database: DatabaseService = Depends(get_database),
+    document: DocumentService = Depends(get_document),
 ):
     """
     Process and index an uploaded document file.
@@ -51,23 +48,12 @@ async def process_document(
     """
     logger.debug(f"Processing file: {file.filename}")
 
-    # Validate request
-    if not file:
-        logger.error("File not found in request")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File not found. Please upload the file",
-        )
-
     try:
         # Read file content
         content = await file.read()
 
-        # Initialize document service
-        document_service = DocumentService(indexer, database)
-
         # Process the uploaded document
-        result = await document_service.index_document(
+        result = await document.index_document(
             content=content,
             file_name=file.filename,
         )

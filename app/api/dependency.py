@@ -12,6 +12,40 @@ from app.services.agent import AgentService
 from app.services.database import DatabaseService
 from app.services.indexer import IndexerService
 from app.services.memory import MemoryService
+from app.services.document import DocumentService
+from app.services.website import WebsiteService
+
+
+@lru_cache
+def get_document() -> DocumentService:
+    """
+    Provides a cached instance of the DocumentService.
+
+    The lru_cache decorator ensures this function returns the same DocumentSerivce
+    instance across multiple calls, optimizing resource usage.
+
+    Returns:
+        DocumentSerivce: A singleton instance of the DocumentSerivce
+    """
+    indexer = get_indexer()
+    database = get_database()
+    return DocumentService(indexer, database)
+
+
+@lru_cache
+def get_website() -> WebsiteService:
+    """
+    Provides a cached instance of the WebsiteService.
+
+    The lru_cache decorator ensures this function returns the same WebsiteService
+    instance across multiple calls, optimizing resource usage.
+
+    Returns:
+        WebsiteService: A singleton instance of the WebsiteService
+    """
+    indexer = get_indexer()
+    database = get_database()
+    return WebsiteService(indexer, database)
 
 
 @lru_cache
@@ -61,3 +95,14 @@ def get_agent() -> AgentService:
 @lru_cache
 def get_memory() -> MemoryService:
     return MemoryService()
+
+
+def initialize_dependency():
+    """
+    Initilalize all the service class.
+    """
+    get_database()
+    get_document()
+    get_indexer()
+    get_memory()
+    get_agent()

@@ -8,7 +8,7 @@ adding to the vector store for later retrieval and querying.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.dependency import get_database, get_indexer
+from app.api.dependency import get_database, get_indexer, get_website
 from app.models.website import WebsiteProcessingRequest
 from app.services.database import DatabaseService
 from app.services.indexer import IndexerService
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/website", tags=["website"])
 )
 async def process_website(
     request: WebsiteProcessingRequest,
-    indexer: IndexerService = Depends(get_indexer),
+    website: WebsiteService = Depends(get_website),
     database: DatabaseService = Depends(get_database),
 ):
     """
@@ -55,14 +55,8 @@ async def process_website(
             logger.info(f"Website {request.url} already processed, skipping")
             return {"status": "Website already processed."}
 
-        # Initialize website service
-        website_service: WebsiteService = WebsiteService(
-            indexer,
-            database,
-        )
-
         # Process the website
-        result = await website_service.process_website(request.url)
+        result = await website.process_website(request.url)
         logger.info(f"Successfully processed website: {request.url}")
         return result
 

@@ -147,7 +147,7 @@ class WebsiteService:
 
             # Record website as processed in database
             self.database.add_website(url)
-            logger.info(f"Successfully processed URL: {url} with {len(chunks)} chunks")
+            logger.debug(f"Successfully processed URL: {url} with {len(chunks)} chunks")
 
             return len(chunks)
 
@@ -165,12 +165,12 @@ class WebsiteService:
         Returns:
             Dict[str, Any]: Processing status and metadata
         """
-        logger.info(f"Processing website: {url}")
+        logger.debug(f"Processing website: {url}")
 
         try:
             # Discover URLs from sitemap
             urls = await self._fetch_sitemap(url)
-            logger.info(f"Found {len(urls)} URLs to process for website: {url}")
+            logger.debug(f"Found {len(urls)} URLs to process for website: {url}")
 
             # Process all URLs concurrently
             tasks = [self._process_url(url) for url in urls]
@@ -180,7 +180,7 @@ class WebsiteService:
             successful_urls = sum(1 for result in results if result is not None)
             total_chunks = sum(result for result in results if result is not None)
 
-            logger.info(
+            logger.debug(
                 f"Completed website processing: {url}, {successful_urls}/{len(urls)} pages processed"
             )
 

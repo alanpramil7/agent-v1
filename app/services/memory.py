@@ -22,9 +22,7 @@ class MemoryService:
         logger.debug("Initializing connection pool")
 
         if self._pool is None:
-            connection_string = (
-                settings.database
-            )  # Alternatively, build your connection string here.
+            connection_string = settings.database
 
             self._pool = AsyncConnectionPool(
                 conninfo=connection_string,
@@ -61,9 +59,6 @@ class MemoryService:
 
         # Create the memory saver with the connection
         memory = AsyncPostgresSaver(conn)
-
-        # Set up a finalizer or context manager to return the connection to the pool when done
-        # This depends on how AsyncPostgresSaver uses the connection
 
         return memory
 
@@ -107,7 +102,6 @@ class MemoryService:
                     WHERE thread_id = %s
                     ORDER BY (metadata->>'step')::int ASC;
                 """
-                # Create a cursor to execute the query.
                 async with conn.cursor() as cur:
                     await cur.execute(query, (thread_id,))
                     rows = await cur.fetchall()

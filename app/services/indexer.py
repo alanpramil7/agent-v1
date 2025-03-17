@@ -62,7 +62,7 @@ class IndexerService:
             self._setup_embedding_model()
             self._setup_vector_store()
             self._setup_text_splitter()
-            logger.info("IndexerService initialization completed successfully")
+            logger.debug("IndexerService initialization completed successfully")
         except Exception as e:
             logger.error(f"Failed to initialize IndexerService: {str(e)}")
             # In production, we might want to implement retry logic or

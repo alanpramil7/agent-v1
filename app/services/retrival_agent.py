@@ -21,10 +21,9 @@ class RetrievalAgent:
         Args:
             indexer (IndexerService): Service for document indexing and retrieval
         """
-        self.llm = settings.local_llm
+        self.llm = settings.llm
         self.indexer = indexer
-        self.retrieval_tool = self._create_retrieval_tool()
-        self.tools = [self.retrieval_tool]
+        self.tools = [self._create_retrieval_tool()]
 
     def _create_retrieval_tool(self) -> BaseTool:
         """
@@ -61,12 +60,9 @@ class RetrievalAgent:
                 return "No documents found."
 
             logger.debug(f"{len(docs)} documents retrieved.")
-            context = "\n\n".join(
-                [
-                    f"Document {i + 1}: \n {doc.page_content}"
-                    for i, doc in enumerate(docs)
-                ]
-            )
+            context = "\n\n".join([
+                f"Document {i + 1}: \n {doc.page_content}" for i, doc in enumerate(docs)
+            ])
             return context
 
         return retrieve_document

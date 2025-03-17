@@ -211,12 +211,12 @@ class WikiService:
         Returns:
             Dict[str, Any]: Processing status and metadata
         """
-        logger.info(f"Processing wiki: {organization}/{project}/{wiki_identifier}")
+        logger.debug(f"Processing wiki: {organization}/{project}/{wiki_identifier}")
 
         try:
             # Check if wiki has already been processed
             if self.database.wiki_exists(organization, project, wiki_identifier):
-                logger.info(f"Wiki is already processed: {wiki_identifier}")
+                logger.debug(f"Wiki is already processed: {wiki_identifier}")
                 return {
                     "status": "Wiki already processed",
                     "wiki_identifier": wiki_identifier,
@@ -241,7 +241,7 @@ class WikiService:
             failed_pages = []
 
             total_pages = len(pages)
-            logger.info(f"Starting to process {total_pages} wiki pages")
+            logger.debug(f"Starting to process {total_pages} wiki pages")
 
             # Define a function to process a single page
             async def process_single_page(page: WikiPage, idx: int) -> None:
@@ -261,7 +261,8 @@ class WikiService:
                         f"Page {page.page_path} content length: {content_length} characters"
                     )
 
-                    logger.debug("Clenaing image tags.")
+                    # Remove image tags from wiki
+                    logger.debug("cleaning image tags.")
                     content = re.sub(r"!\[[^\]]*\]\([^\)]*\)", "", page.content)
 
                     if content == "":
@@ -317,13 +318,11 @@ class WikiService:
             await asyncio.gather(*tasks)
 
             # Log processing summary
-            logger.info(
+            logger.debug(
                 f"Wiki processing completed. Successfully processed: {len(processed_pages)} pages, Failed: {len(failed_pages)} pages"
             )
             if failed_pages:
-                logger.warning(
-                    f"Failed pages: {', '.join(failed_pages[:10])}{'...' if len(failed_pages) > 10 else ''}"
-                )
+                logger.warning(f"Failed pages: {len(failed_pages)}")
 
             # Return status and record in database if successful
             if failed_pages:
@@ -344,9 +343,7 @@ class WikiService:
                 }
 
         except Exception as e:
-            logger.error(
-                f"Error processing wiki {wiki_identifier}: {str(e)}", exc_info=True
-            )
+            logger.error(f"Error processing wiki {wiki_identifier}: {str(e)}")
             return {
                 "status": "Failed",
                 "error": str(e),

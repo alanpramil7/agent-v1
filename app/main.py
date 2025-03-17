@@ -12,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.dependency import get_agent, get_memory
+from app.api.dependency import get_agent, get_memory, initialize_dependency
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.utils.logger import logger
@@ -28,6 +28,7 @@ os.environ["LANGSMITH_PROJECT"] = "sql-agent"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.debug("Initializing lifespan.")
+    initialize_dependency()
     memory_service = get_memory()
     await memory_service.setup_memory_table()
     agent = get_agent()
