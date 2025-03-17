@@ -73,7 +73,8 @@ class AgentService:
 
         # Define the supervisor prompt
         supervisor_prompt = """
-You are a supervisor tasked with managing a conversation between the following workers: {members}. Given the user request and conversation history, respond with the worker to act next.
+You are a supervisor tasked with managing a conversation between the following workers: {members}.
+Given the user request and conversation history, respond with the worker to act next.
 Each worker will perform a task and report back.
 If the conversation is over, respond with 'FINISH'.
 
@@ -116,14 +117,17 @@ Based on the conversation, who should act next? Or should we FINISH? Select one 
 
         def supervisor_agent(state):
             """Supervisor node that decides the next agent."""
-            logger.debug("Calling supervisor node.")
+            logger.debug(
+                f"Calling supervisor node with {len(state['messages'])} message."
+            )
             route_response = supervisor_chain.invoke(state)
+            logger.debug(f"Routing to {route_response.next} node.")
             return {"next": route_response.next}
 
         # Define agent node function
         async def agent_node(state, agent, name):
             """Invoke an agent and update the state with its response."""
-            logger.debug(f"Calling agent node with agent: {agent}")
+            logger.debug(f"Calling agent node with agent: {name}")
             result = await agent.ainvoke({"messages": state["messages"]})
             last_message = result["messages"][-1]
             return {"messages": [AIMessage(content=last_message.content, name=name)]}
@@ -192,29 +196,85 @@ Based on the conversation, who should act next? Or should we FINISH? Select one 
             }
             initial_state = {"messages": [HumanMessage(content=question)]}
 
-            async for event in self.graph.astream(
+            async for message, metadata in self.graph.astream(
                 initial_state,
                 config,
-                stream_mode="updates",
-                debug=True,
+                stream_mode="messages",
+                debug=False,
             ):
-                for node, updates in event.items():
-                    if node == "supervisor" and "next" in updates:
-                        next_agent = updates["next"]
-                        if next_agent != "FINISH":
-                            routing_message = {
-                                "type": "routing_message",
-                                "delta": f"Routing to {'database analysis' if next_agent == 'SQL_agent' else 'document retrieval'}.\n\n",
-                            }
-                            yield f"data: {json.dumps(routing_message)}\n\n"
-                    elif "messages" in updates:
-                        for msg in updates["messages"]:
-                            if isinstance(msg, AIMessage):
-                                delta_message = {
-                                    "type": "agent_message_delta",
-                                    "delta": msg.content,
-                                }
-                                yield f"data: {json.dumps(delta_message)}\n\n"
+                # Tool calls messages and metdata
+                # Messge : content='\nCREATE TABLE aws_cost (\n\tid BIGSERIAL NOT NULL, \n\tdate DATE NOT NULL, \n\t"currencyCode" TEXT NOT NULL, \n\t"billType" TEXT NOT NULL, \n\t"unblendedRate" DOUBLE PRECISION, \n\t"unblendedCost" DOUBLE PRECISION,
+                # \n\t"blendedRate" DOUBLE PRECISION, \n\t"blendedCost" DOUBLE PRECISION, \n\t"consumedQuantity" DOUBLE PRECISION, \n\t"payerAccountId" TEXT NOT NULL, \n\t"productCode" TEXT NOT NULL, \n\t"usageType" TEXT NOT NULL, \n\t"productFamily" TEXT,
+                # \n\tsku TEXT, \n\tlocation TEXT, \n\ttags JSONB NOT NULL, \n\t"resourceId" TEXT NOT NULL, \n\t"serviceCode" TEXT, \n\t"cloudAccountId" UUID NOT NULL, \n\t"createdAt" TIMESTAMP WITH TIME ZONE NOT NULL, \n\t"updatedAt" TIMESTAMP WITH TIME
+                # ZONE NOT NULL, \n\t"deletedAt" TIMESTAMP WITH TIME ZONE, \n\t"itemType" TEXT DEFAULT \'Usage\'::text NOT NULL, \n\t"usageAccountId" TEXT, \n\tCONSTRAINT aws_cost_pkey PRIMARY KEY (id)\n)\n\n/*\n3 rows from aws_cost
+                # table:\nid\tdate\tcurrencyCode\tbillType\tunblendedRate\tunblendedCost\tblendedRate\tblendedCost\tconsumedQuantity\tpayerAccountId\tproductCode\tusageType\tproductFamily\tsku\tlocation\ttags\tresourceId\tserviceCode\tcloudAccountId\tcreat
+                # edAt\tupdatedAt\tdeletedAt\titemType\tusageAccountId\n100944\t2023-03-20\tUSD\tAnniversary\t0.0\t0.0\t0.0\t0.0\t0.0033627283\t971650273230\tAmazonEC2\tUSE2-DataTransfer-Regional-Bytes\tData
+                # Transfer\tKF338J7FCKZPUBD9\tus-east-2\t{\'Name\': \'workerenv-870032797970315-518bfc14-d09b-45e3-ae22-ff2ceb04d9e1-worker\', \'Vendor\': \'Databri\ti-0a6f493d3fddf64a2\tAWSDataTransfer\t12cecf82-448f-43ee-af8c-e9f61cbb2e8a\t2025-01-28
+                # 11:24:25.995000+05:30\t2025-01-28 11:24:25.995000+05:30\tNone\tUsage\t971650273230\n100945\t2023-03-20\tUSD\tAnniversary\t0.0\t0.0\t0.0\t0.0\t0.0020273691\t971650273230\tAmazonEC2\tUSE2-DataTransfer-Regional-Bytes\tData
+                # Transfer\tKF338J7FCKZPUBD9\tus-east-2\t{\'Name\': \'workerenv-870032797970315-518bfc14-d09b-45e3-ae22-ff2ceb04d9e1-worker\', \'Vendor\': \'Databri\ti-03349fc9badd9cfc4\tAWSDataTransfer\t12cecf82-448f-43ee-af8c-e9f61cbb2e8a\t2025-01-28
+                # 11:24:25.995000+05:30\t2025-01-28 11:24:25.995000+05:30\tNone\tUsage\t971650273230\n100946\t2023-03-20\tUSD\tAnniversary\t0.0\t0.0\t0.0\t0.0\t0.0037171654\t971650273230\tAmazonEC2\tUSE2-DataTransfer-Regional-Bytes\tData
+                # Transfer\tKF338J7FCKZPUBD9\tus-east-2\t{\'Name\': \'workerenv-870032797970315-518bfc14-d09b-45e3-ae22-ff2ceb04d9e1-worker\', \'Vendor\': \'Databri\ti-048f2ff94ed65f619\tAWSDataTransfer\t12cecf82-448f-43ee-af8c-e9f61cbb2e8a\t2025-01-28
+                # 11:24:25.995000+05:30\t2025-01-28 11:24:25.995000+05:30\tNone\tUsage\t971650273230\n*/' name='sql_db_schema' id='b5dedd9e-d2e9-4028-bd62-b97c0f67cd76' tool_call_id='call_XtLbI2O6c3QCGdrc8B485d8q'
+                #  Metadata : {'thread_id': '6194fedf-6088-4673-86a6-7085ba80d63d', 'langgraph_step': 4, 'langgraph_node': 'tools', 'langgraph_triggers': ['__pregel_push'], 'langgraph_path': ('__pregel_push', 0), 'langgraph_checkpoint_ns':
+                # 'SQL_agent:87b687f2-a9b2-597b-ebaf-64dc88aa5fbe|tools:1bc7f496-7151-1782-75c6-f7f51e76fad4', 'checkpoint_ns': 'SQL_agent:87b687f2-a9b2-597b-ebaf-64dc88aa5fbe'}
+
+                # Agent response message and metadata
+                # Messge : content=' free' additional_kwargs={} response_metadata={} id='run-48fe0c15-9c87-42ca-8d61-b308b5511dfb'
+                #  Metadata : {'thread_id': '6194fedf-6088-4673-86a6-7085ba80d63d', 'langgraph_step': 7, 'langgraph_node': 'agent', 'langgraph_triggers': ['tools'], 'langgraph_path': ('__pregel_pull', 'agent'), 'langgraph_checkpoint_ns':
+                # 'SQL_agent:87b687f2-a9b2-597b-ebaf-64dc88aa5fbe|agent:3751963f-9aa0-0d9d-e089-ea99afe8c802', 'checkpoint_ns': 'SQL_agent:87b687f2-a9b2-597b-ebaf-64dc88aa5fbe', 'ls_provider': 'azure', 'ls_model_name': 'gpt-4o-mini', 'ls_model_type':
+                # 'chat', 'ls_temperature': None}
+                #  Messge : content=' to' additional_kwargs={} response_metadata={} id='run-48fe0c15-9c87-42ca-8d61-b308b5511dfb'
+                #  Metadata : {'thread_id': '6194fedf-6088-4673-86a6-7085ba80d63d', 'langgraph_step': 7, 'langgraph_node': 'agent', 'langgraph_triggers': ['tools'], 'langgraph_path': ('__pregel_pull', 'agent'), 'langgraph_checkpoint_ns':
+                # 'SQL_agent:87b687f2-a9b2-597b-ebaf-64dc88aa5fbe|agent:3751963f-9aa0-0d9d-e089-ea99afe8c802', 'checkpoint_ns': 'SQL_agent:87b687f2-a9b2-597b-ebaf-64dc88aa5fbe', 'ls_provider': 'azure', 'ls_model_name': 'gpt-4o-mini', 'ls_model_type':
+                # 'chat', 'ls_temperature': None}
+
+                # Supervisor message and metadata
+                # Messge : content='' additional_kwargs={} response_metadata={} id='run-d336cc90-664d-4ebd-a90d-d7deb371283d'
+                #  Metadata : {'thread_id': '6194fedf-6088-4673-86a6-7085ba80d63d', 'langgraph_step': 3, 'langgraph_node': 'supervisor', 'langgraph_triggers': ['SQL_agent'], 'langgraph_path': ('__pregel_pull', 'supervisor'), 'langgraph_checkpoint_ns':
+                # 'supervisor:19bea099-f575-621d-159e-0139641e616f', 'checkpoint_ns': 'supervisor:19bea099-f575-621d-159e-0139641e616f', 'ls_provider': 'azure', 'ls_model_name': 'gpt-4o-mini', 'ls_model_type': 'chat', 'ls_temperature': None,
+                # 'structured_output_format': {'kwargs': {'method': 'json_schema'}, 'schema': {'type': 'function', 'function': {'name': 'RouteResponse', 'description': "Structured output for the supervisor's routing decision.", 'parameters': {'properties':
+                # {'next': {'anyOf': [{'const': 'FINISH', 'type': 'string'}, {'const': 'SQL_agent', 'type': 'string'}, {'const': 'DOCS_agent', 'type': 'string'}]}}, 'required': ['next'], 'type': 'object'}}}}}
+                #  Messge : content='' additional_kwargs={'parsed': RouteResponse(next='FINISH'), 'refusal': None} response_metadata={'token_usage': None, 'model_name': '', 'system_fingerprint': 'fp_b705f0c291', 'prompt_filter_results': [{'prompt_index':
+                # 0, 'content_filter_results': {'hate': {'filtered': False, 'severity': 'safe'}, 'self_harm': {'filtered': False, 'severity': 'safe'}, 'sexual': {'filtered': False, 'severity': 'safe'}, 'violence': {'filtered': False, 'severity':
+                # 'safe'}}}]} id='run-d336cc90-664d-4ebd-a90d-d7deb371283d'
+                #  Metadata : {'thread_id': '6194fedf-6088-4673-86a6-7085ba80d63d', 'langgraph_step': 3, 'langgraph_node': 'supervisor', 'langgraph_triggers': ['SQL_agent'], 'langgraph_path': ('__pregel_pull', 'supervisor'), 'langgraph_checkpoint_ns':
+                # 'supervisor:19bea099-f575-621d-159e-0139641e616f', 'checkpoint_ns': 'supervisor:19bea099-f575-621d-159e-0139641e616f', 'ls_provider': 'azure', 'ls_model_name': 'gpt-4o-mini', 'ls_model_type': 'chat', 'ls_temperature': None,
+                # 'structured_output_format': {'kwargs': {'method': 'json_schema'}, 'schema': {'type': 'function', 'function': {'name': 'RouteResponse', 'description': "Structured output for the supervisor's routing decision.", 'parameters': {'properties':
+                # {'next': {'anyOf': [{'const': 'FINISH', 'type': 'string'}, {'const': 'SQL_agent', 'type': 'string'}, {'const': 'DOCS_agent', 'type': 'string'}]}}, 'required': ['next'], 'type': 'object'}}}}}
+
+                # print(f"Message: {message.content}")
+                # print(f"Metadata: {metadata}")
+                if metadata["langgraph_node"] == "agent":
+                    if message.content:
+                        delta_message = {
+                            "type": "agent_message_delta",
+                            "delta": message.content,
+                        }
+                        yield f"data: {json.dumps(delta_message)}\n\n"
+
+                # delta_message = {
+                #     "type": "agent_message_delta",
+                #     "delta": message.content,
+                # }
+                # yield f"data: {json.dumps(delta_message)}\n\n"
+
+                # for node, updates in event.items():
+                #     if node == "supervisor" and "next" in updates:
+                #         next_agent = updates["next"]
+                #         if next_agent != "FINISH":
+                #             routing_message = {
+                #                 "type": "routing_message",
+                #                 "delta": f"Routing to {'database analysis' if next_agent == 'SQL_agent' else 'document retrieval'}.\n\n",
+                #             }
+                #             yield f"data: {json.dumps(routing_message)}\n\n"
+                #     elif "messages" in updates:
+                #         for msg in updates["messages"]:
+                #             if isinstance(msg, AIMessage):
+                #                 delta_message = {
+                #                     "type": "agent_message_delta",
+                #                     "delta": msg.content,
+                #                 }
+                #                 yield f"data: {json.dumps(delta_message)}\n\n"
 
             # Signal completion
             completion_message = {"type": "agent_message_complete"}

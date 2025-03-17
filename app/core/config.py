@@ -91,6 +91,7 @@ class Settings(BaseSettings):
         """"""
         return ChatOllama(
             model="llama3.2",
+            # model="mistral",
             # model="MFDoom/deepseek-r1-tool-calling:7b",
             temparature=0,
         )

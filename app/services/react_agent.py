@@ -53,7 +53,7 @@ def create_react_agent(
 ) -> StateGraph:
     """Creates a ReAct agent using LangGraph and LangChain components."""
     # Setup tools
-    debug: bool = True
+    debug: bool = False
     store: BaseStore = None
     tool_node = ToolNode(tools)
     tool_calling_enabled = bool(tools)

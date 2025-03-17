@@ -50,20 +50,21 @@ class SqlAgent:
                 When querying database, focus on:
                 - When calculating cost ALWAYS use `blendedCost` column from cost table for cost calculations.
                 - When querying databse don't consider dates untill and unless user give a specific date.
+                - When grouping prefer `productCode` over `serviceCode` if `productCode` avilable in tableschema.
 
                 When responding, focus on:
+                - **IMPORTANT** Don't respond the table names and the schema baxk to the user.
                 - Summarize cost and usage trends, pinpoint anomalies, and provide specific, quantitative recommendations for cost optimization.
                 - Prefer to respond in table rarther than list.
                 - Delivering clear, concise, and actionable final results.
                 - Providing a high-level overview of the analysis, including key trends, cost drivers, and specific, quantitative recommendations for cost optimization.
-                - Presenting calculations and insights in a summarized manner, without revealing internal analysis details such as the exact tools used, intermediate steps, or underlying table names.
                 - Including estimated savings or efficiency gains with supporting calculations.
                 - Making sure that all explanations are aligned with FinOps principles.
                 - Ensure your explanations are clear, concise, and directly aligned with FinOps principles.
 
              **Additional Guidelines:**
              - **Error Handling:**
-               - If an error occurs (e.g., syntax error, incorrect table/column names), diagnose the issue and suggest an alternative query approach.
+               - If gracefully handle it and give appropriate response to users, don't sent the error to the user.
                - If the required data is not available, inform the user about what additional data would be needed to perform the analysis.
                - When give response consider returining the result in table foramt instead of list, only if the response contains list.
 

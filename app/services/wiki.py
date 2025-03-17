@@ -10,6 +10,7 @@ and ensures proper error handling and deduplication of wiki content processing.
 """
 
 import asyncio
+import re
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -260,9 +261,16 @@ class WikiService:
                         f"Page {page.page_path} content length: {content_length} characters"
                     )
 
+                    logger.debug("Clenaing image tags.")
+                    content = re.sub(r"!\[[^\]]*\]\([^\)]*\)", "", page.content)
+
+                    if content == "":
+                        logger.warning(f"Page {page.page_path} is empty - skipping")
+                        return
+
                     # Create document with metadata
                     doc = Document(
-                        page_content=f"{page.page_path}\n{page.content}",
+                        page_content=f"{page.page_path}\n{content}",
                         metadata={
                             "source": f"wiki_{page.page_path}",
                             "organization": organization,
