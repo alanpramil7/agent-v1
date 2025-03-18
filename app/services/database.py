@@ -12,7 +12,6 @@ redundant processing.
 
 import sqlite3
 from datetime import datetime
-from urllib.parse import urlparse
 
 import psycopg2
 
@@ -49,21 +48,7 @@ class DatabaseService:
 
         """
         try:
-            connection_string = settings.database
-            result = urlparse(connection_string)
-            username = result.username
-            # TODO: Remove hardcoded password
-            password = result.password
-            database = result.path[1:]
-            hostname = result.hostname
-            port = result.port
-            conn = psycopg2.connect(
-                database=database,
-                user=username,
-                password="qwert@123",
-                host=hostname,
-                port=port,
-            )
+            conn = psycopg2.connect(settings.database)
             return conn
         except psycopg2.Error as e:
             logger.error(f"Failed to connect to database: {str(e)}")

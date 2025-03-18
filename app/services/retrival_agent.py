@@ -21,7 +21,7 @@ class RetrievalAgent:
         Args:
             indexer (IndexerService): Service for document indexing and retrieval
         """
-        self.llm = settings.llm
+        self.llm = settings.local_llm
         self.indexer = indexer
         self.tools = [self._create_retrieval_tool()]
 
