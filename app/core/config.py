@@ -14,7 +14,6 @@ from typing import Dict, Type
 
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
 from langchain_community.document_loaders.base import BaseLoader
-from langchain_groq import ChatGroq
 from langchain_ollama import ChatOllama
 from langchain_openai import AzureChatOpenAI
 from pydantic_settings import BaseSettings, SettingsConfigDict

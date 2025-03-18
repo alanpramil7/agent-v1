@@ -8,10 +8,9 @@ adding to the vector store for later retrieval and querying.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.dependency import get_database, get_indexer, get_website
+from app.api.dependency import get_database, get_website
 from app.models.website import WebsiteProcessingRequest
 from app.services.database import DatabaseService
-from app.services.indexer import IndexerService
 from app.services.website import WebsiteService
 from app.utils.logger import logger
 
